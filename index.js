@@ -76,6 +76,32 @@ function addExtensionSettingsPanel() {
     });
 }
 
+// ─── Slash Command Fallback ───────────────────────────────────────────────────
+
+function registerSlashCommand() {
+    try {
+        const { registerSlashCommand: regCmd } = SillyTavern.getContext();
+        if (regCmd) {
+            regCmd('lexicon', () => {
+                initPanel();
+                const $panel = $('#lexicon-panel');
+                if ($panel.length) {
+                    $panel.show();
+                    toastr.info('Lexicon panel opened', '', { timeOut: 1500 });
+                } else {
+                    toastr.warning('Lexicon panel not found — trying re-init');
+                    destroyPanel();
+                    initPanel();
+                    $('#lexicon-panel').show();
+                }
+            }, [], '<span>Opens the Lexicon panel</span>', true, true);
+        }
+    } catch (e) {
+        // Slash commands may not be available in all ST versions
+        console.warn(`[${EXT_ID}] Slash command registration skipped:`, e.message);
+    }
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 jQuery(async () => {
@@ -100,7 +126,20 @@ jQuery(async () => {
             return;
         }
 
-        initPanel();
+        // Init panel with visible feedback since we can't check console on mobile
+        try {
+            initPanel();
+            const fabExists = $('#lexicon-fab').length > 0;
+            const panelExists = $('#lexicon-panel').length > 0;
+            console.log(`[${EXT_ID}] FAB: ${fabExists}, Panel: ${panelExists}`);
+
+            if (!fabExists) {
+                toastr.warning('Lexicon FAB failed to mount — use /lexicon command to open panel', 'Lexicon', { timeOut: 6000 });
+            }
+        } catch (panelErr) {
+            console.error(`[${EXT_ID}] Panel init failed:`, panelErr);
+            toastr.error(`Panel init failed: ${panelErr.message}`, 'Lexicon', { timeOut: 8000 });
+        }
 
         const ctx = getContext();
         if (ctx?.chat?.length > 0) {
@@ -115,12 +154,15 @@ jQuery(async () => {
         // Register public API for other extensions (Spark, etc.)
         registerAPI();
 
+        // Slash command fallback for mobile users
+        registerSlashCommand();
+
         console.log(`[${EXT_ID}] ✅ ${EXT_DISPLAY_NAME} v${EXT_VERSION} ready`);
 
     } catch (err) {
         console.error(`[${EXT_ID}] ❌ Init failed:`, err);
         toastr.error(
-            `${EXT_DISPLAY_NAME} failed to initialize. Check the console.`,
+            `${EXT_DISPLAY_NAME} failed to initialize: ${err.message}`,
             'Lexicon Error',
             { timeOut: 8000 }
         );

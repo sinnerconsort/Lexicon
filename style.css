@@ -5,9 +5,9 @@
 /* ── FAB ──────────────────────────────────────────────────────── */
 .lexicon-fab {
     position: fixed;
-    bottom: 80px;
+    bottom: 130px;
     right: 16px;
-    z-index: 9500;
+    z-index: 99999;
     width: 48px;
     height: 48px;
     border-radius: 50%;
@@ -31,9 +31,9 @@
 /* ── Debug Badge ─────────────────────────────────────────────── */
 .lexicon-debug-badge {
     position: fixed;
-    bottom: 136px;
+    bottom: 186px;
     right: 16px;
-    z-index: 9500;
+    z-index: 99999;
     background: var(--SmartThemeBlurTintColor, rgba(20, 20, 35, 0.85));
     color: var(--SmartThemeBodyColor, #ccc);
     border: 1px solid rgba(255,255,255,0.15);
@@ -57,7 +57,7 @@
     transform: translate(-50%, -50%);
     width: min(94vw, 460px);
     max-height: 85vh;
-    z-index: 10000;
+    z-index: 100000;
     background: var(--SmartThemeBlurTintColor, rgba(18, 18, 30, 0.97));
     border: 1px solid rgba(255,255,255,0.12);
     border-radius: 14px;
