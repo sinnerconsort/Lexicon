@@ -1,0 +1,658 @@
+/* ═══════════════════════════════════════════════════════════════
+   LEXICON v2 — Semantic Lore Engine + Narrative Pacing
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── FAB ──────────────────────────────────────────────────────── */
+.lexicon-fab {
+    position: fixed;
+    bottom: 80px;
+    right: 16px;
+    z-index: 9500;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 2px solid var(--SmartThemeBodyColor, rgba(255,255,255,0.3));
+    background: var(--SmartThemeBlurTintColor, rgba(20, 20, 35, 0.9));
+    color: var(--SmartThemeBodyColor, #e8e0d0);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+    transition: transform 0.15s, box-shadow 0.15s;
+    backdrop-filter: blur(4px);
+}
+.lexicon-fab:hover {
+    transform: scale(1.08);
+    box-shadow: 0 4px 18px rgba(0,0,0,0.6);
+}
+
+/* ── Debug Badge ─────────────────────────────────────────────── */
+.lexicon-debug-badge {
+    position: fixed;
+    bottom: 136px;
+    right: 16px;
+    z-index: 9500;
+    background: var(--SmartThemeBlurTintColor, rgba(20, 20, 35, 0.85));
+    color: var(--SmartThemeBodyColor, #ccc);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 12px;
+    padding: 2px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    transition: background 0.2s;
+}
+.lexicon-debug-badge.lexicon-badge-active {
+    border-color: rgba(120, 200, 140, 0.5);
+    color: rgba(160, 230, 170, 0.9);
+}
+
+/* ── Panel Shell ─────────────────────────────────────────────── */
+.lexicon-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(94vw, 460px);
+    max-height: 85vh;
+    z-index: 10000;
+    background: var(--SmartThemeBlurTintColor, rgba(18, 18, 30, 0.97));
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+    backdrop-filter: blur(12px);
+    color: var(--SmartThemeBodyColor, #d4cfc4);
+    font-size: 13px;
+}
+
+.lexicon-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+}
+.lexicon-title {
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.lex-version-tag {
+    font-size: 10px;
+    opacity: 0.5;
+    font-weight: 400;
+}
+.lexicon-header-btns {
+    display: flex;
+    gap: 6px;
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────── */
+.lexicon-tabs {
+    display: flex;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.lexicon-tab {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 6px;
+    background: none;
+    border: none;
+    color: var(--SmartThemeBodyColor, #aaa);
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+}
+.lexicon-tab:hover { color: #fff; }
+.lexicon-tab.active {
+    color: #fff;
+    border-bottom-color: rgba(180, 160, 120, 0.7);
+}
+
+/* ── Panes (scrollable) ──────────────────────────────────────── */
+.lexicon-pane {
+    overflow-y: auto;
+    padding: 12px 14px;
+    flex: 1;
+    min-height: 0;
+}
+
+/* ── Filter Row ──────────────────────────────────────────────── */
+.lexicon-filter-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+.lexicon-filter-row select,
+.lexicon-filter-row input[type="text"] {
+    flex: 1;
+    min-width: 80px;
+    padding: 5px 8px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    color: inherit;
+    font-size: 12px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────── */
+.lexicon-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.06);
+    color: var(--SmartThemeBodyColor, #ccc);
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.15s;
+}
+.lexicon-btn:hover { background: rgba(255,255,255,0.12); }
+.lexicon-btn-primary {
+    background: rgba(120, 180, 140, 0.2);
+    border-color: rgba(120, 180, 140, 0.35);
+}
+.lexicon-btn-primary:hover { background: rgba(120, 180, 140, 0.3); }
+.lexicon-btn-danger {
+    background: rgba(200, 80, 80, 0.15);
+    border-color: rgba(200, 80, 80, 0.3);
+    color: rgba(255, 140, 140, 0.9);
+}
+.lexicon-btn-danger:hover { background: rgba(200, 80, 80, 0.25); }
+.lexicon-btn-sm { padding: 3px 8px; font-size: 11px; }
+.lexicon-icon-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+    color: var(--SmartThemeBodyColor, #aaa);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    transition: background 0.15s;
+}
+.lexicon-icon-btn:hover { background: rgba(255,255,255,0.1); }
+.lex-btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ── Entry Cards ─────────────────────────────────────────────── */
+.lex-entries-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.lex-entry-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 8px 10px;
+    transition: border-color 0.2s, background 0.2s;
+    border-left: 3px solid transparent;
+}
+.lex-entry-card.lex-entry-active {
+    background: rgba(120, 200, 140, 0.06);
+    border-color: rgba(120, 200, 140, 0.25);
+}
+
+/* Tier-colored left border */
+.lex-entry-card.lex-tier-background { border-left-color: #7a9e7e; }
+.lex-entry-card.lex-tier-foreshadow { border-left-color: #b8a460; }
+.lex-entry-card.lex-tier-gated { border-left-color: #8a7eb8; }
+.lex-entry-card.lex-tier-twist { border-left-color: #c45c5c; }
+
+.lex-entry-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 6px;
+}
+.lex-entry-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+.lex-entry-btns {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+}
+.lex-entry-title {
+    font-weight: 600;
+    font-size: 13px;
+    word-break: break-word;
+}
+.lex-entry-preview {
+    margin-top: 4px;
+    font-size: 11px;
+    opacity: 0.6;
+    line-height: 1.4;
+    word-break: break-word;
+}
+.lex-pin-icon { font-size: 12px; }
+
+/* ── Badges ──────────────────────────────────────────────────── */
+.lex-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.06);
+    white-space: nowrap;
+}
+.lex-cat-badge { opacity: 0.7; }
+.lex-scope-badge { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
+.lex-scope-global { border-color: rgba(100,160,200,0.3); color: rgba(140,190,230,0.8); }
+.lex-scope-character { border-color: rgba(200,160,100,0.3); color: rgba(230,190,130,0.8); }
+.lex-scope-chat { border-color: rgba(160,200,100,0.3); color: rgba(190,230,130,0.8); }
+.lex-lb-badge { border-color: rgba(160,130,200,0.3); color: rgba(190,160,230,0.8); }
+
+/* Tier badge */
+.lex-tier-badge {
+    font-size: 12px;
+    padding: 0 3px;
+    background: none;
+}
+
+/* Narrative action badges */
+.lex-action-inject {
+    border-color: rgba(120, 200, 140, 0.4);
+    color: rgba(140, 220, 160, 0.9);
+    background: rgba(120, 200, 140, 0.1);
+}
+.lex-action-hint {
+    border-color: rgba(184, 164, 96, 0.4);
+    color: rgba(210, 190, 120, 0.9);
+    background: rgba(184, 164, 96, 0.1);
+}
+.lex-action-suppress {
+    border-color: rgba(160, 120, 120, 0.3);
+    color: rgba(180, 140, 140, 0.7);
+    background: rgba(160, 120, 120, 0.08);
+}
+
+/* Narrative state badges */
+.lex-state-dormant { opacity: 0.5; }
+.lex-state-seeding {
+    border-color: rgba(184, 164, 96, 0.35);
+    color: rgba(210, 190, 120, 0.85);
+}
+.lex-state-ready {
+    border-color: rgba(120, 200, 140, 0.4);
+    color: rgba(140, 230, 160, 0.9);
+    background: rgba(120, 200, 140, 0.1);
+}
+.lex-state-revealed {
+    border-color: rgba(160, 140, 200, 0.35);
+    color: rgba(180, 160, 220, 0.8);
+}
+
+/* ── Chekhov Seed Tracker (pips on entry cards) ──────────────── */
+.lex-chekhov-bar {
+    margin-top: 4px;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.lex-chekhov-label {
+    opacity: 0.5;
+    font-size: 10px;
+}
+.lex-chekhov-pips {
+    letter-spacing: 1px;
+    color: rgba(184, 164, 96, 0.8);
+    font-size: 10px;
+}
+
+/* ── Gate Conditions (on entry cards) ────────────────────────── */
+.lex-entry-gates {
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.lex-gate-toggle {
+    font-size: 11px;
+    cursor: pointer;
+    padding: 1px 4px;
+    border-radius: 3px;
+    opacity: 0.7;
+    transition: opacity 0.15s, background 0.15s;
+}
+.lex-gate-toggle:hover {
+    opacity: 1;
+    background: rgba(255,255,255,0.06);
+}
+.lex-gate-toggle.lex-gate-met {
+    opacity: 0.9;
+    color: rgba(140, 220, 160, 0.9);
+    text-decoration: line-through;
+    text-decoration-color: rgba(140, 220, 160, 0.3);
+}
+
+/* ── Gate Conditions (in edit form) ──────────────────────────── */
+.lex-gate-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 4px;
+}
+.lex-gate-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 3px 6px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.06);
+}
+.lex-gate-item .lex-check { font-size: 12px; flex: 1; min-width: 0; }
+.lex-gate-add-row {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+.lex-gate-add-row input {
+    flex: 1;
+    padding: 4px 8px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    color: inherit;
+    font-size: 12px;
+}
+
+/* ── Form ─────────────────────────────────────────────────────── */
+.lex-form label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    opacity: 0.6;
+    margin: 8px 0 3px;
+}
+.lex-form label:first-child { margin-top: 0; }
+.lex-form input[type="text"],
+.lex-form textarea,
+.lex-form select {
+    width: 100%;
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    color: inherit;
+    font-size: 12px;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+.lex-form textarea { resize: vertical; min-height: 50px; }
+.lex-inline-checks {
+    display: flex;
+    gap: 12px;
+    margin: 6px 0;
+}
+.lex-check {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.lex-form-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 12px;
+}
+.lex-form-section-header {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 14px 0 4px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+}
+.lex-tier-desc {
+    font-size: 11px;
+    margin: 2px 0 6px;
+    font-style: italic;
+    opacity: 0.7;
+}
+.lex-entry-id-display {
+    margin-top: 6px;
+    font-size: 11px;
+    opacity: 0.5;
+}
+.lex-entry-id-display code {
+    font-family: monospace;
+    background: rgba(255,255,255,0.06);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+.lex-hint {
+    font-size: 11px;
+    opacity: 0.5;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* ── Timeline ────────────────────────────────────────────────── */
+.lex-timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.lex-timeline-title {
+    font-weight: 600;
+    font-size: 13px;
+}
+.lex-timeline-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+}
+.lex-timeline-event {
+    display: flex;
+    gap: 8px;
+    padding: 6px 0;
+    position: relative;
+}
+.lex-tl-line {
+    position: absolute;
+    left: 10px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255,255,255,0.08);
+}
+.lex-timeline-event:first-child .lex-tl-line { top: 50%; }
+.lex-timeline-event:last-child .lex-tl-line { bottom: 50%; }
+.lex-tl-content {
+    margin-left: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    line-height: 1.4;
+}
+.lex-tl-icon {
+    font-size: 14px;
+    width: 20px;
+    text-align: center;
+    position: absolute;
+    left: 1px;
+    z-index: 1;
+}
+.lex-tl-inject { color: rgba(140, 220, 160, 0.9); }
+.lex-tl-hint { color: rgba(210, 190, 120, 0.9); }
+.lex-tl-suppress { color: rgba(160, 130, 130, 0.7); }
+.lex-tl-title {
+    font-weight: 600;
+}
+.lex-tl-action {
+    font-size: 10px;
+    padding: 0 5px;
+    border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.lex-tl-time {
+    font-size: 10px;
+    opacity: 0.4;
+    margin-left: auto;
+}
+.lex-tl-context {
+    width: 100%;
+    font-size: 10px;
+    opacity: 0.4;
+    font-style: italic;
+    margin-top: 1px;
+    word-break: break-word;
+}
+
+/* Timeline action coloring */
+.lex-timeline-event.lex-tl-inject .lex-tl-action {
+    border-color: rgba(120, 200, 140, 0.3);
+    color: rgba(140, 220, 160, 0.8);
+}
+.lex-timeline-event.lex-tl-hint .lex-tl-action {
+    border-color: rgba(184, 164, 96, 0.3);
+    color: rgba(210, 190, 120, 0.8);
+}
+.lex-timeline-event.lex-tl-suppress .lex-tl-action {
+    border-color: rgba(160, 120, 120, 0.2);
+    color: rgba(160, 130, 130, 0.6);
+}
+
+/* ── Settings Tab ────────────────────────────────────────────── */
+.lex-settings-pane .lex-setting-group {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.lex-settings-pane .lex-setting-group:last-child { border-bottom: none; }
+.lex-setting-label {
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+.lex-settings-pane input[type="range"] {
+    width: 100%;
+    margin: 4px 0;
+}
+.lex-settings-pane select {
+    width: 100%;
+    padding: 5px 8px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    color: inherit;
+    font-size: 12px;
+}
+.lex-every-n-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0 0 20px;
+}
+.lex-every-n-row input[type="number"] {
+    width: 50px;
+    padding: 3px 6px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 4px;
+    color: inherit;
+    font-size: 12px;
+}
+
+/* ── Debug Tab ───────────────────────────────────────────────── */
+.lex-debug-block {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 12px;
+    line-height: 1.7;
+    margin-bottom: 10px;
+}
+.lex-debug-label {
+    opacity: 0.5;
+    min-width: 100px;
+    display: inline-block;
+}
+.lex-debug-section { margin-bottom: 10px; }
+.lex-debug-heading {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    opacity: 0.5;
+    margin-bottom: 4px;
+}
+.lex-debug-entry {
+    padding: 3px 6px;
+    font-size: 12px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.lex-debug-entry:nth-child(odd) { background: rgba(255,255,255,0.02); }
+.lex-debug-counts {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.lex-debug-action-inject { border-left: 2px solid rgba(120, 200, 140, 0.5); }
+.lex-debug-action-hint { border-left: 2px solid rgba(184, 164, 96, 0.5); }
+.lex-debug-action-suppress { border-left: 2px solid rgba(160, 120, 120, 0.3); }
+.lex-score {
+    font-size: 11px;
+    opacity: 0.6;
+    font-family: monospace;
+}
+
+/* ── Empty state ─────────────────────────────────────────────── */
+.lex-empty {
+    text-align: center;
+    padding: 24px 12px;
+    opacity: 0.5;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+/* ── Mobile tweaks ───────────────────────────────────────────── */
+@media (max-width: 480px) {
+    .lexicon-panel {
+        width: 98vw;
+        max-height: 90vh;
+        border-radius: 10px;
+    }
+    .lexicon-tab { padding: 7px 4px; font-size: 11px; }
+    .lex-debug-counts { flex-direction: column; gap: 4px; }
+}
