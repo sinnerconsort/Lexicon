@@ -1,4 +1,4 @@
-import { saveSettingsDebounced, saveChatDebounced, chat_metadata } from '../../../../script.js';
+import { saveSettingsDebounced, saveChatDebounced, chat_metadata } from '../../../../../script.js';
 import { getSettings, getChatState } from './state.js';
 import { EXT_ID, DEFAULT_CHAT_STATE } from './config.js';
 

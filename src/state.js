@@ -1,5 +1,5 @@
-import { extension_settings } from '../../../extensions.js';
-import { chat_metadata } from '../../../../script.js';
+import { extension_settings } from '../../../../extensions.js';
+import { chat_metadata } from '../../../../../script.js';
 import {
     EXT_ID, DEFAULT_SETTINGS, DEFAULT_CHAT_STATE, DEFAULT_ENTRY,
     NARRATIVE_STATES, REVEAL_TIERS,

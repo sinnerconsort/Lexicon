@@ -1,5 +1,5 @@
-import { getContext } from '../../../extensions.js';
-import { generateRaw } from '../../../../script.js';
+import { getContext } from '../../../../extensions.js';
+import { generateRaw } from '../../../../../script.js';
 import {
     getSettings, getChatState, getCharacterKey, areGatesMet,
 } from './state.js';

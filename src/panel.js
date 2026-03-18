@@ -1,4 +1,4 @@
-import { getContext } from '../../../extensions.js';
+import { getContext } from '../../../../extensions.js';
 import {
     getSettings, getChatState, sanitizeChatState, generateEntryId,
     getCharacterKey, computeNarrativeState, areGatesMet,

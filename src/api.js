@@ -15,7 +15,7 @@ import { getAllCandidateEntries } from './scanner.js';
 import {
     REVEAL_TIERS, NARRATIVE_ACTIONS, NARRATIVE_STATES, REVEAL_TIER_META,
 } from './config.js';
-import { getContext } from '../../../extensions.js';
+import { getContext } from '../../../../extensions.js';
 
 /**
  * Get all active entries, optionally filtered.

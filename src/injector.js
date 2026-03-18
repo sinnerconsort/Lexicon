@@ -1,5 +1,5 @@
-import { setExtensionPrompt } from '../../../../script.js';
-import { getContext } from '../../../extensions.js';
+import { setExtensionPrompt } from '../../../../../script.js';
+import { getContext } from '../../../../extensions.js';
 import {
     getSettings, getChatState, recordSeed, recordFired,
     addTimelineEvent,
@@ -16,7 +16,7 @@ const INJECT_KEY = 'lexicon_lore';
 // Attempt to import extension_prompt_types; fall back to numeric constant
 let PROMPT_TYPE_IN_CHAT = 1;
 try {
-    const { extension_prompt_types } = await import('../../../../script.js');
+    const { extension_prompt_types } = await import('../../../../../script.js');
     if (extension_prompt_types?.IN_CHAT !== undefined) {
         PROMPT_TYPE_IN_CHAT = extension_prompt_types.IN_CHAT;
     }
