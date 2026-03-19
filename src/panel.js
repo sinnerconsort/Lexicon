@@ -708,14 +708,12 @@ export function renderEntriesList() {
       ${e.fromLorebook ? '<span class="lex-badge lex-lb-badge">lorebook</span>' : ''}
     </div>
     <div class="lex-entry-btns">
-      ${!e.fromLorebook ? `
         <button class="lexicon-icon-btn lex-edit-entry" data-id="${xss(e.id)}" data-scope="${xss(e._displayScope)}" title="Edit">
           <i class="fa-solid fa-pen-to-square"></i>
         </button>
         <button class="lexicon-icon-btn lex-delete-entry" data-id="${xss(e.id)}" data-scope="${xss(e._displayScope)}" title="Delete">
           <i class="fa-solid fa-trash"></i>
         </button>
-      ` : ''}
     </div>
   </div>
   ${seeds > 0 ? `<div class="lex-chekhov-bar"><span class="lex-chekhov-label">Seeds planted:</span> <span class="lex-chekhov-pips">${'●'.repeat(Math.min(seeds, 10))}${'○'.repeat(Math.max(0, 10 - seeds))}</span></div>` : ''}
@@ -1123,10 +1121,11 @@ function doImport() {
     reader.onload = (ev) => {
         const result = importCompendium(ev.target.result);
         if (result.success) {
-            toastr.success(`Imported ${result.count} entries`);
+            toastr.success(`Imported ${result.count} entries — edit them to set reveal tiers`, 'Lexicon', { timeOut: 5000 });
+            gotoTab('entries');
             renderEntriesList();
         } else {
-            toastr.error(`Import failed: ${result.error}`);
+            toastr.error(`Import failed: ${result.error}`, 'Lexicon', { timeOut: 6000 });
         }
     };
     reader.readAsText(file);
