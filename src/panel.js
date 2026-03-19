@@ -77,10 +77,11 @@ function createFAB() {
     }
     if (!attached) $('body').append(fab);
 
-    // Touch drag support
+    // Touch drag support + tap detection
     let isDragging = false, wasDragged = false;
     let startX, startY, startRight, startBottom;
 
+    // Desktop click
     fab.on('click', (e) => {
         if (wasDragged) { wasDragged = false; return; }
         e.preventDefault();
@@ -107,7 +108,15 @@ function createFAB() {
         }
     }, { passive: false });
 
-    fab[0].addEventListener('touchend', () => { isDragging = false; }, { passive: true });
+    // Tap detection via touchend (click often doesn't fire on mobile fixed elements)
+    fab[0].addEventListener('touchend', (e) => {
+        isDragging = false;
+        if (!wasDragged) {
+            e.preventDefault();
+            togglePanel();
+        }
+        wasDragged = false;
+    }, { passive: false });
 
     // Self-healing: re-create if DOM removes it
     setInterval(() => {
