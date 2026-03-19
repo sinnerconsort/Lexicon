@@ -10,6 +10,31 @@ import { shouldScan } from './src/scanner.js';
 import { clearLorebookCache } from './src/lorebook.js';
 import { registerAPI, unregisterAPI } from './src/api.js';
 
+// ─── Visual Debug Logger (bypasses toastr entirely) ──────────────────────────
+
+const DEBUG_ENABLED = true; // Flip to false once things work
+
+function _dbg(msg) {
+    if (!DEBUG_ENABLED) return;
+    console.log(`[Lexicon] ${msg}`);
+    let $el = $('#lexicon-debug-log');
+    if (!$el.length) {
+        $('body').append(`
+            <div id="lexicon-debug-log" style="
+                position:fixed; bottom:10px; left:10px; right:60px;
+                max-height:180px; overflow:auto;
+                background:rgba(0,0,0,0.92); color:#0f0;
+                font:11px/1.4 monospace; padding:8px; border-radius:8px;
+                z-index:999999; pointer-events:auto;
+                border:1px solid #0f0;
+            "><div style="color:#ff0;font-weight:bold;margin-bottom:4px;">LEXICON DEBUG LOG</div></div>
+        `);
+        $el = $('#lexicon-debug-log');
+    }
+    $el.append(`<div>${new Date().toLocaleTimeString()} — ${msg}</div>`);
+    $el.scrollTop($el[0].scrollHeight);
+}
+
 // ─── Event Handlers ───────────────────────────────────────────────────────────
 
 async function onMessageReceived() {
@@ -76,95 +101,84 @@ function addExtensionSettingsPanel() {
     });
 }
 
-// ─── Slash Command Fallback ───────────────────────────────────────────────────
-
-function registerSlashCommand() {
-    try {
-        const { registerSlashCommand: regCmd } = SillyTavern.getContext();
-        if (regCmd) {
-            regCmd('lexicon', () => {
-                initPanel();
-                const $panel = $('#lexicon-panel');
-                if ($panel.length) {
-                    $panel.show();
-                    toastr.info('Lexicon panel opened', '', { timeOut: 1500 });
-                } else {
-                    toastr.warning('Lexicon panel not found — trying re-init');
-                    destroyPanel();
-                    initPanel();
-                    $('#lexicon-panel').show();
-                }
-            }, [], '<span>Opens the Lexicon panel</span>', true, true);
-        }
-    } catch (e) {
-        // Slash commands may not be available in all ST versions
-        console.warn(`[${EXT_ID}] Slash command registration skipped:`, e.message);
-    }
-}
-
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 jQuery(async () => {
-    try {
-        console.log(`[${EXT_ID}] ${EXT_DISPLAY_NAME} v${EXT_VERSION} initializing…`);
+    _dbg('INIT START');
 
+    try {
+        _dbg('1. sanitizeSettings');
         if (!extension_settings[EXT_ID]) {
             extension_settings[EXT_ID] = {};
         }
         sanitizeSettings();
+        _dbg('1. ✓ settings ok');
 
+        _dbg('2. addSettingsPanel');
         try {
             addExtensionSettingsPanel();
+            _dbg('2. ✓ settings panel added');
         } catch (e) {
-            console.warn(`[${EXT_ID}] Settings panel error:`, e);
+            _dbg(`2. ✗ settings panel FAILED: ${e.message}`);
         }
 
         const settings = getSettings();
+        _dbg(`3. enabled=${settings.enabled}`);
 
         if (!settings.enabled) {
-            console.log(`[${EXT_ID}] Extension is disabled — skipping UI init`);
+            _dbg('3. STOPPED — extension disabled');
             return;
         }
 
-        // Init panel with visible feedback since we can't check console on mobile
+        _dbg('4. calling initPanel()');
         try {
             initPanel();
-            const fabExists = $('#lexicon-fab').length > 0;
-            const panelExists = $('#lexicon-panel').length > 0;
-            console.log(`[${EXT_ID}] FAB: ${fabExists}, Panel: ${panelExists}`);
-
-            if (!fabExists) {
-                toastr.warning('Lexicon FAB failed to mount — use /lexicon command to open panel', 'Lexicon', { timeOut: 6000 });
-            }
-        } catch (panelErr) {
-            console.error(`[${EXT_ID}] Panel init failed:`, panelErr);
-            toastr.error(`Panel init failed: ${panelErr.message}`, 'Lexicon', { timeOut: 8000 });
+            _dbg('4. ✓ initPanel returned');
+        } catch (e) {
+            _dbg(`4. ✗ initPanel THREW: ${e.message}`);
+            _dbg(`   stack: ${e.stack?.substring(0, 200)}`);
         }
 
+        // Check what actually ended up in the DOM
+        const fabCount = $('#lexicon-fab').length;
+        const panelCount = $('#lexicon-panel').length;
+        const badgeCount = $('#lexicon-debug-badge').length;
+        _dbg(`5. DOM — FAB:${fabCount} Panel:${panelCount} Badge:${badgeCount}`);
+
+        if (fabCount > 0) {
+            const fab = document.getElementById('lexicon-fab');
+            if (fab) {
+                const cs = window.getComputedStyle(fab);
+                _dbg(`5a. FAB css — display:${cs.display} vis:${cs.visibility} opacity:${cs.opacity} z:${cs.zIndex} pos:${cs.position} bottom:${cs.bottom} right:${cs.right}`);
+            }
+        } else {
+            _dbg('5. ✗ FAB NOT in DOM!');
+        }
+
+        _dbg('6. chat data');
         const ctx = getContext();
         if (ctx?.chat?.length > 0) {
             loadChatData();
             sanitizeChatState();
             syncDebugBadge();
+            _dbg('6. ✓ loaded');
+        } else {
+            _dbg('6. no chat, skipped');
         }
 
+        _dbg('7. events');
         eventSource.on(event_types.MESSAGE_RECEIVED, onMessageReceived);
         eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
+        _dbg('7. ✓ registered');
 
-        // Register public API for other extensions (Spark, etc.)
+        _dbg('8. API');
         registerAPI();
+        _dbg(`8. ✓ LexiconAPI: ${!!window.LexiconAPI}`);
 
-        // Slash command fallback for mobile users
-        registerSlashCommand();
-
-        console.log(`[${EXT_ID}] ✅ ${EXT_DISPLAY_NAME} v${EXT_VERSION} ready`);
+        _dbg('✅ INIT COMPLETE');
 
     } catch (err) {
-        console.error(`[${EXT_ID}] ❌ Init failed:`, err);
-        toastr.error(
-            `${EXT_DISPLAY_NAME} failed to initialize: ${err.message}`,
-            'Lexicon Error',
-            { timeOut: 8000 }
-        );
+        _dbg(`❌ CRASHED: ${err.message}`);
+        _dbg(`stack: ${err.stack?.substring(0, 300)}`);
     }
 });
