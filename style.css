@@ -52,11 +52,11 @@
 /* ── Panel Shell ─────────────────────────────────────────────── */
 .lexicon-panel {
     position: fixed;
-    top: 50%;
+    top: 45px;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translateX(-50%);
     width: min(94vw, 460px);
-    max-height: 85vh;
+    max-height: calc(100vh - 110px);
     z-index: 100000;
     background: var(--SmartThemeBlurTintColor, rgba(18, 18, 30, 0.97));
     border: 1px solid rgba(255,255,255,0.12);
@@ -650,7 +650,8 @@
 @media (max-width: 480px) {
     .lexicon-panel {
         width: 98vw;
-        max-height: 90vh;
+        top: 35px;
+        max-height: calc(100vh - 90px);
         border-radius: 10px;
     }
     .lexicon-tab { padding: 7px 4px; font-size: 11px; }
