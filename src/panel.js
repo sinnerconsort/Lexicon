@@ -31,22 +31,111 @@ export function destroyPanel() {
     $('#lexicon-debug-badge').remove();
 }
 
-// ─── FAB + Debug Badge ────────────────────────────────────────────────────────
+// ─── FAB — Spark's mobile-proven pattern ─────────────────────────────────────
 
 function createFAB() {
-    $('body').append(`
-        <button id="lexicon-fab" class="lexicon-fab" title="Lexicon - Semantic Lore Engine">
-            <i class="fa-solid fa-book-open"></i>
-        </button>
-    `);
+    if ($('#lexicon-fab').length) return;
+
+    const fab = $('<button>', {
+        id: 'lexicon-fab',
+        title: 'Lexicon — Semantic Lore Engine',
+        html: '<i class="fa-solid fa-book-open" style="pointer-events:none;"></i>'
+    }).css({
+        position: 'fixed',
+        bottom: '130px',
+        right: '15px',
+        width: '44px',
+        height: '44px',
+        borderRadius: '50%',
+        border: '2px solid var(--SmartThemeBodyColor, rgba(255,255,255,0.3))',
+        background: 'var(--SmartThemeBlurTintColor, rgba(20,20,35,0.9))',
+        color: 'var(--SmartThemeBodyColor, #e8e0d0)',
+        fontSize: '16px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        zIndex: '31000',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.5)',
+        padding: '0',
+        margin: '0',
+        pointerEvents: 'auto',
+        overflow: 'visible',
+    });
+
+    // Attach to ST containers first (critical for mobile visibility)
+    const targets = ['#form_sheld', '#sheld', '#chat', 'body'];
+    let attached = false;
+    for (const sel of targets) {
+        const target = $(sel);
+        if (target.length) {
+            target.append(fab);
+            target.css('overflow', 'visible');
+            attached = true;
+            break;
+        }
+    }
+    if (!attached) $('body').append(fab);
+
+    // Touch drag support
+    let isDragging = false, wasDragged = false;
+    let startX, startY, startRight, startBottom;
+
+    fab.on('click', (e) => {
+        if (wasDragged) { wasDragged = false; return; }
+        e.preventDefault();
+        e.stopPropagation();
+        togglePanel();
+    });
+
+    fab[0].addEventListener('touchstart', (e) => {
+        isDragging = true; wasDragged = false;
+        const touch = e.touches[0];
+        startX = touch.clientX; startY = touch.clientY;
+        const rect = fab[0].getBoundingClientRect();
+        startRight = window.innerWidth - rect.right;
+        startBottom = window.innerHeight - rect.bottom;
+    }, { passive: true });
+
+    fab[0].addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        const touch = e.touches[0];
+        const dx = touch.clientX - startX, dy = touch.clientY - startY;
+        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+            wasDragged = true; e.preventDefault();
+            fab.css({ right: Math.max(4, startRight - dx) + 'px', bottom: Math.max(4, startBottom - dy) + 'px' });
+        }
+    }, { passive: false });
+
+    fab[0].addEventListener('touchend', () => { isDragging = false; }, { passive: true });
+
+    // Self-healing: re-create if DOM removes it
+    setInterval(() => {
+        if (getSettings().enabled && !$('#lexicon-fab').length) createFAB();
+    }, 3000);
 }
 
 function createDebugBadge() {
-    $('body').append(`
-        <div id="lexicon-debug-badge" class="lexicon-debug-badge" title="Lexicon: active injections (click to debug)">
-            📚 0
-        </div>
-    `);
+    if ($('#lexicon-debug-badge').length) return;
+
+    $('<div>', {
+        id: 'lexicon-debug-badge',
+        title: 'Lexicon: active injections',
+        text: '📚 0'
+    }).css({
+        position: 'fixed',
+        bottom: '182px',
+        right: '16px',
+        zIndex: '31000',
+        background: 'var(--SmartThemeBlurTintColor, rgba(20,20,35,0.85))',
+        color: 'var(--SmartThemeBodyColor, #ccc)',
+        border: '1px solid rgba(255,255,255,0.15)',
+        borderRadius: '12px',
+        padding: '2px 10px',
+        fontSize: '12px',
+        cursor: 'pointer',
+        pointerEvents: 'auto',
+    }).appendTo('#form_sheld').length || $('body').append($('#lexicon-debug-badge'));
 }
 
 export function syncDebugBadge() {
