@@ -164,14 +164,38 @@ function exportCompendium() {
 function importCompendium(jsonString, mode = 'merge') {
     try {
         const data = JSON.parse(jsonString);
-        if (!data.entries || !Array.isArray(data.entries)) throw new Error('Invalid compendium: missing entries array');
+        let entriesToImport = [];
+        
+        // Accept Lexicon native format (entries as array)
+        if (Array.isArray(data.entries)) {
+            entriesToImport = data.entries;
+        }
+        // Accept ST lorebook format (entries as object keyed by uid)
+        else if (data.entries && typeof data.entries === 'object') {
+            entriesToImport = Object.values(data.entries).map(e => ({
+                id: 'lex_' + (e.comment || e.key?.[0] || 'entry').toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + (e.uid || Date.now()),
+                title: e.comment || (Array.isArray(e.key) ? e.key[0] : 'Untitled'),
+                content: e.content || '',
+                category: 'General',
+                revealTier: 'background',
+                gateConditions: [],
+                lorebookKey: Array.isArray(e.key) ? e.key : [e.key].filter(Boolean),
+                enabled: !e.disable,
+                order: e.order || 10,
+            }));
+        }
+        else { throw new Error('Invalid format: entries must be an array or object'); }
+        
+        if (!entriesToImport.length) { throw new Error('No entries found in file'); }
+        
         const settings = getSettings();
         if (mode === 'replace') {
-            settings.entries = data.entries;
-            settings.characterEntries = data.characterEntries || {};
+            settings.entries = entriesToImport;
+            if (data.characterEntries) settings.characterEntries = data.characterEntries;
         } else {
             const existingIds = new Set(settings.entries.map(e => e.id));
-            settings.entries = [...settings.entries, ...data.entries.filter(e => !existingIds.has(e.id))];
+            const existingTitles = new Set(settings.entries.map(e => e.title?.toLowerCase()));
+            settings.entries = [...settings.entries, ...entriesToImport.filter(e => !existingIds.has(e.id) && !existingTitles.has(e.title?.toLowerCase()))];
             if (data.characterEntries) {
                 for (const [key, entries] of Object.entries(data.characterEntries)) {
                     if (!settings.characterEntries[key]) { settings.characterEntries[key] = entries; }
@@ -183,7 +207,7 @@ function importCompendium(jsonString, mode = 'merge') {
             }
         }
         saveSettings();
-        return { success: true, count: data.entries.length };
+        return { success: true, count: entriesToImport.length };
     } catch (e) { return { success: false, error: e.message }; }
 }
 
