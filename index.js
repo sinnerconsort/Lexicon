@@ -525,6 +525,27 @@ function registerAPI() {
 //  FAB — Spark's proven pattern (inline styles, #form_sheld attachment)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+function createExpandOverlay() {
+    if ($('#lex-expand-overlay').length) return;
+    $('body').append('<div id="lex-expand-overlay" class="lex-expand-overlay" style="display:none;"><div class="lex-expand-header"><span class="lex-expand-title">Edit</span><button class="lexicon-btn lexicon-btn-primary" id="lex-expand-done"><i class="fa-solid fa-check"></i> Done</button></div><textarea id="lex-expand-textarea" class="lex-expand-textarea"></textarea></div>');
+    let sourceEl = null;
+    $(document).on('click', '.lex-expand-btn', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        const target = $(this).data('target');
+        sourceEl = target ? $(target) : $(this).siblings('textarea').first();
+        if (!sourceEl.length) return;
+        $('#lex-expand-textarea').val(sourceEl.val());
+        $('.lex-expand-title').text($(this).data('label') || 'Edit');
+        $('#lex-expand-overlay').fadeIn(150);
+        $('#lex-expand-textarea').focus();
+    });
+    $('#lex-expand-done').on('click', function () {
+        if (sourceEl?.length) sourceEl.val($('#lex-expand-textarea').val()).trigger('change');
+        $('#lex-expand-overlay').fadeOut(150);
+        sourceEl = null;
+    });
+}
+
 function createFAB() {
     if ($('#lexicon-fab').length) return;
 
@@ -648,7 +669,7 @@ function createPanel() {
       <label>Category</label><input type="text" id="lex-f-category" placeholder="Character, Location…" list="lex-cat-list" /><datalist id="lex-cat-list">${CATEGORIES.map(c => `<option value="${c}">`).join('')}</datalist>
       <label>Scope</label><select id="lex-f-scope"><option value="global">Global</option><option value="character">Character</option><option value="chat">This chat</option></select>
       <div class="lex-inline-checks"><label class="lex-check"><input type="checkbox" id="lex-f-pinned" /> 📌 Always inject</label><label class="lex-check"><input type="checkbox" id="lex-f-enabled" checked /> Enabled</label></div>
-      <label>Content</label><textarea id="lex-f-content" rows="5" placeholder="Lore content…"></textarea>
+      <label>Content</label><textarea id="lex-f-content" rows="5" placeholder="Lore content…"></textarea><button class="lex-expand-btn" data-target="#lex-f-content" data-label="Content" title="Expand"><i class="fa-solid fa-expand"></i></button>
       <div class="lex-form-section-header">🎭 Narrative Pacing</div>
       <label>Reveal Tier</label><select id="lex-f-tier">${tierOptions}</select><div class="lex-tier-desc" id="lex-tier-desc"></div>
       <label>Hint Text <span class="lex-hint">(optional — AI generates if empty)</span></label><textarea id="lex-f-hint" rows="2" placeholder="Breadcrumb…"></textarea>
@@ -945,6 +966,7 @@ jQuery(async () => {
         if (!settings.enabled) { console.log('[Lexicon] Disabled'); return; }
         createFAB();
         createPanel();
+        createExpandOverlay();
         const ctx = getContext();
         if (ctx?.chat?.length > 0) { loadChatData(); sanitizeChatState(); }
         eventSource.on(event_types.MESSAGE_RECEIVED, async () => { if (getSettings().enabled && shouldScan()) await scanAndInject(); });
