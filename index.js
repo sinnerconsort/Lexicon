@@ -176,7 +176,7 @@ function importCompendium(jsonString, mode = 'merge') {
                 id: 'lex_' + (e.comment || e.key?.[0] || 'entry').toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + (e.uid || Date.now()),
                 title: e.comment || (Array.isArray(e.key) ? e.key[0] : 'Untitled'),
                 content: e.content || '',
-                category: 'General',
+                category: (e.comment || '').toLowerCase().match(/character|npc|person/) || (e.content || '').substring(0, 200).match(/personality|physical|behavior|speech pattern/i) ? 'Character' : 'General',
                 revealTier: 'background',
                 gateConditions: [],
                 lorebookKey: Array.isArray(e.key) ? e.key : [e.key].filter(Boolean),

@@ -52,11 +52,11 @@
 /* ── Panel Shell ─────────────────────────────────────────────── */
 .lexicon-panel {
     position: fixed;
-    top: 50%;
+    top: 5vh;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translateX(-50%);
     width: min(94vw, 460px);
-    max-height: 85vh;
+    max-height: 88vh;
     z-index: 100000;
     background: var(--SmartThemeBlurTintColor, rgba(18, 18, 30, 0.97));
     border: 1px solid rgba(255,255,255,0.12);
