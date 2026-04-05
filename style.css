@@ -444,6 +444,45 @@
     font-style: italic;
     opacity: 0.7;
 }
+.lex-resolution-desc {
+    font-size: 11px;
+    margin: 2px 0 6px;
+    font-style: italic;
+    opacity: 0.7;
+}
+.lex-evolution-log {
+    margin: 8px 0;
+}
+.lex-evolution-entries {
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+.lex-evolution-item {
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 4px;
+    border-left: 2px solid rgba(255,255,255,0.1);
+    font-size: 11px;
+}
+.lex-evo-transition {
+    font-weight: 600;
+    font-size: 12px;
+}
+.lex-evo-date {
+    float: right;
+    opacity: 0.5;
+    font-size: 10px;
+}
+.lex-evo-reason {
+    margin-top: 3px;
+    opacity: 0.7;
+    font-style: italic;
+}
+.lex-res-badge {
+    font-size: 10px;
+}
 .lex-entry-id-display {
     margin-top: 6px;
     font-size: 11px;
