@@ -417,6 +417,15 @@
     font-size: 12px;
     cursor: pointer;
 }
+.lex-scene-types-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 12px;
+    margin: 4px 0 8px;
+}
+.lex-scene-check {
+    font-size: 11px;
+}
 .lex-form-actions {
     display: flex;
     gap: 6px;
@@ -579,6 +588,20 @@
 }
 .lex-every-n-row input[type="number"] {
     width: 50px;
+    padding: 3px 6px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 4px;
+    color: inherit;
+    font-size: 12px;
+}
+.lex-scene-override-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0 0 20px;
+}
+.lex-scene-override-row select {
     padding: 3px 6px;
     background: rgba(255,255,255,0.06);
     border: 1px solid rgba(255,255,255,0.12);
