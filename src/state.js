@@ -2,7 +2,7 @@ import { extension_settings } from '../../../../extensions.js';
 import { chat_metadata } from '../../../../../script.js';
 import {
     EXT_ID, DEFAULT_SETTINGS, DEFAULT_CHAT_STATE, DEFAULT_ENTRY,
-    NARRATIVE_STATES, REVEAL_TIERS,
+    NARRATIVE_STATES, REVEAL_TIERS, SCENE_TYPE_KEYWORDS,
 } from './config.js';
 
 // ─── Core Getters ─────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ export function sanitizeSettings() {
         s.characterEntries = {};
     }
 
-    // v2 migration: ensure all entries have narrative fields
+    // v2 + v2.1 migration: ensure all entries have required fields
     migrateEntries(s.entries);
     for (const key of Object.keys(s.characterEntries)) {
         migrateEntries(s.characterEntries[key]);
@@ -61,6 +61,20 @@ export function sanitizeChatState() {
             state.narrativeTimeline = [];
         }
 
+        // v2.1 migrations
+        if (!state.injectionHistory || typeof state.injectionHistory !== 'object') {
+            state.injectionHistory = { log: [], frequency_map: {} };
+        }
+        if (!Array.isArray(state.injectionHistory.log)) {
+            state.injectionHistory.log = [];
+        }
+        if (!state.injectionHistory.frequency_map || typeof state.injectionHistory.frequency_map !== 'object') {
+            state.injectionHistory.frequency_map = {};
+        }
+        if (state.detectedSceneType === undefined) state.detectedSceneType = null;
+        if (state.sceneTypeOverride === undefined) state.sceneTypeOverride = null;
+        if (!Array.isArray(state.pendingRelatedBoosts)) state.pendingRelatedBoosts = [];
+
         // Migrate chat entries too
         migrateEntries(state.chatEntries);
     } catch (e) {
@@ -69,11 +83,12 @@ export function sanitizeChatState() {
 }
 
 /**
- * Ensure all entries have v2 narrative fields. Non-destructive.
+ * Ensure all entries have v2 + v2.1 fields. Non-destructive.
  */
 function migrateEntries(entries) {
     if (!Array.isArray(entries)) return;
     for (const e of entries) {
+        // v2 fields
         if (!e.revealTier) e.revealTier = REVEAL_TIERS.BACKGROUND;
         if (e.hintText === undefined) e.hintText = '';
         if (!Array.isArray(e.gateConditions)) e.gateConditions = [];
@@ -81,6 +96,8 @@ function migrateEntries(entries) {
             e.chekhov = { seedCount: 0, plantedAt: null, firedAt: null, lastHintAt: null };
         }
         if (!e.narrativeState) e.narrativeState = NARRATIVE_STATES.DORMANT;
+        // v2.1 fields
+        if (!Array.isArray(e.scene_types)) e.scene_types = [];
     }
 }
 
@@ -99,9 +116,6 @@ export function getCharacterKey(ctx) {
 
 // ─── Narrative State Helpers ──────────────────────────────────────────────────
 
-/**
- * Record that an entry was hinted at (Chekhov seed planted).
- */
 export function recordSeed(entry) {
     if (!entry.chekhov) entry.chekhov = { seedCount: 0, plantedAt: null, firedAt: null, lastHintAt: null };
     entry.chekhov.seedCount++;
@@ -114,26 +128,17 @@ export function recordSeed(entry) {
     }
 }
 
-/**
- * Record that an entry was fully revealed (Chekhov's Gun fired).
- */
 export function recordFired(entry) {
     if (!entry.chekhov) entry.chekhov = { seedCount: 0, plantedAt: null, firedAt: null, lastHintAt: null };
     entry.chekhov.firedAt = Date.now();
     entry.narrativeState = NARRATIVE_STATES.REVEALED;
 }
 
-/**
- * Check if all manual gate conditions are marked as met.
- */
 export function areGatesMet(entry) {
     if (!entry.gateConditions || entry.gateConditions.length === 0) return true;
     return entry.gateConditions.every(g => g.met);
 }
 
-/**
- * Compute effective narrative state from entry data.
- */
 export function computeNarrativeState(entry) {
     if (entry.chekhov?.firedAt) return NARRATIVE_STATES.REVEALED;
     if (entry.revealTier === REVEAL_TIERS.BACKGROUND) return NARRATIVE_STATES.DORMANT;
@@ -142,9 +147,6 @@ export function computeNarrativeState(entry) {
     return NARRATIVE_STATES.DORMANT;
 }
 
-/**
- * Add a timeline event to chat state.
- */
 export function addTimelineEvent(chatState, entryId, entryTitle, action, contextSnippet) {
     if (!Array.isArray(chatState.narrativeTimeline)) chatState.narrativeTimeline = [];
     chatState.narrativeTimeline.push({
@@ -154,8 +156,166 @@ export function addTimelineEvent(chatState, entryId, entryTitle, action, context
         action,
         context: (contextSnippet || '').substring(0, 120),
     });
-    // Cap timeline at 200 events to keep chat_metadata reasonable
     if (chatState.narrativeTimeline.length > 200) {
         chatState.narrativeTimeline = chatState.narrativeTimeline.slice(-200);
     }
+}
+
+// ─── v2.1: Injection History ─────────────────────────────────────────────────
+
+/**
+ * Record that an entry was injected (full or hint) into context.
+ * Updates both the rolling log and the frequency map.
+ */
+export function recordInjectionEvent(chatState, entryId, messageIndex, action) {
+    if (!chatState.injectionHistory) {
+        chatState.injectionHistory = { log: [], frequency_map: {} };
+    }
+    const history = chatState.injectionHistory;
+
+    // Append to rolling log
+    history.log.push({
+        entry_id: entryId,
+        message_index: messageIndex,
+        action: action || 'INJECT',
+        timestamp: new Date().toISOString(),
+    });
+
+    // Cap log at 200 entries — prune oldest but keep frequency counts
+    if (history.log.length > 200) {
+        history.log = history.log.slice(-200);
+    }
+
+    // Update frequency map
+    if (!history.frequency_map[entryId]) {
+        history.frequency_map[entryId] = { count: 0, last_injected_msg: 0 };
+    }
+    history.frequency_map[entryId].count++;
+    history.frequency_map[entryId].last_injected_msg = messageIndex;
+}
+
+/**
+ * Get injection frequency for a specific entry.
+ */
+export function getEntryFrequency(chatState, entryId) {
+    const fm = chatState?.injectionHistory?.frequency_map;
+    if (!fm || !fm[entryId]) return { count: 0, last_injected_msg: 0 };
+    return { ...fm[entryId] };
+}
+
+/**
+ * Get top N most frequently injected entries.
+ */
+export function getMostFrequentEntries(chatState, topN = 5) {
+    const fm = chatState?.injectionHistory?.frequency_map;
+    if (!fm) return [];
+    return Object.entries(fm)
+        .map(([id, data]) => ({ entry_id: id, ...data }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, topN);
+}
+
+/**
+ * Get all injection events since a specific message index.
+ */
+export function getEntriesFiredSince(chatState, messageIndex) {
+    const log = chatState?.injectionHistory?.log;
+    if (!Array.isArray(log)) return [];
+    return log.filter(e => e.message_index >= messageIndex);
+}
+
+/**
+ * Check if an entry has hit the soft cooldown threshold.
+ * Returns true if the entry has been injected >= threshold times in the last N messages.
+ */
+export function isEntryCoolingDown(chatState, entryId, currentMsgIndex, threshold = 3, windowSize = 10) {
+    const log = chatState?.injectionHistory?.log;
+    if (!Array.isArray(log) || !log.length) return false;
+
+    const windowStart = currentMsgIndex - windowSize;
+    const recentFirings = log.filter(
+        e => e.entry_id === entryId && e.message_index >= windowStart
+    );
+    return recentFirings.length >= threshold;
+}
+
+// ─── v2.1: Scene Type Detection ──────────────────────────────────────────────
+
+/**
+ * Detect the current scene type from recent text using keyword heuristics.
+ * Returns the scene type with the highest keyword match count, or null if no clear winner.
+ */
+export function detectSceneType(recentText) {
+    if (!recentText) return null;
+
+    const lower = recentText.toLowerCase();
+    const scores = {};
+
+    for (const [sceneType, keywords] of Object.entries(SCENE_TYPE_KEYWORDS)) {
+        let count = 0;
+        for (const kw of keywords) {
+            // Count occurrences — simple indexOf check
+            let idx = 0;
+            while ((idx = lower.indexOf(kw, idx)) !== -1) {
+                count++;
+                idx += kw.length;
+            }
+        }
+        if (count > 0) scores[sceneType] = count;
+    }
+
+    if (Object.keys(scores).length === 0) return null;
+
+    // Return the scene type with the highest score, but only if it has a meaningful lead
+    const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+    const top = sorted[0];
+    const second = sorted[1];
+
+    // Need at least 2 keyword hits and some margin over second place
+    if (top[1] < 2) return null;
+    if (second && top[1] - second[1] < 1) return null; // Too ambiguous
+
+    return top[0];
+}
+
+/**
+ * Get the effective scene type — manual override > detected.
+ */
+export function getEffectiveSceneType(chatState) {
+    if (chatState?.sceneTypeOverride) return chatState.sceneTypeOverride;
+    return chatState?.detectedSceneType || null;
+}
+
+// ─── v2.1: Related Entry Boost Tracking ──────────────────────────────────────
+
+/**
+ * After a scan, compute which entry IDs should get a next-cycle related boost.
+ * Called with the list of entries that were just injected/hinted.
+ */
+export function computePendingRelatedBoosts(injectedEntries, allCandidates) {
+    const boostSet = new Set();
+    const injectedIds = new Set(injectedEntries.map(e => e.id));
+
+    for (const entry of injectedEntries) {
+        if (!entry.relatedIds?.length) continue;
+        for (const relId of entry.relatedIds) {
+            // Don't boost entries that were already injected this cycle
+            if (!injectedIds.has(relId)) {
+                // Verify the related entry actually exists
+                if (allCandidates.some(c => c.id === relId)) {
+                    boostSet.add(relId);
+                }
+            }
+        }
+    }
+
+    return Array.from(boostSet);
+}
+
+/**
+ * Check if an entry has a pending related boost from last cycle.
+ */
+export function hasPendingBoost(chatState, entryId) {
+    return Array.isArray(chatState?.pendingRelatedBoosts)
+        && chatState.pendingRelatedBoosts.includes(entryId);
 }

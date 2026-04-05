@@ -10,7 +10,9 @@ import { clearLorebookCache, lorebookStatus } from './lorebook.js';
 import {
     EXT_DISPLAY_NAME, CATEGORIES, REVEAL_TIERS, REVEAL_TIER_META,
     NARRATIVE_ACTIONS, NARRATIVE_STATES,
+    SCENE_TYPE_META,
 } from './config.js';
+import { getEffectiveSceneType } from './state.js';
 
 let editingEntry = null;
 
@@ -274,6 +276,13 @@ function createPanel() {
       <label>Related entry IDs <span class="lex-hint">(comma separated — relevance boost)</span></label>
       <input type="text" id="lex-f-related" placeholder="lex_abc123, lex_def456…" />
 
+      <label>Scene Types <span class="lex-hint">(boost when this scene type is active)</span></label>
+      <div class="lex-scene-types-grid" id="lex-f-scene-types">
+        ${Object.entries(SCENE_TYPE_META).map(([key, meta]) =>
+          `<label class="lex-check lex-scene-check"><input type="checkbox" value="${key}" /> ${meta.icon} ${meta.label}</label>`
+        ).join('\n        ')}
+      </div>
+
       <div class="lex-entry-id-display" id="lex-f-id-display" style="display:none;">
         ID: <code id="lex-f-id-text"></code>
       </div>
@@ -327,6 +336,30 @@ function createPanel() {
         Auto-generate hints for entries without manual hint text
       </label>
       <div class="lex-hint">Uses an extra AI call per hint. Hints are cached after first generation.</div>
+    </div>
+
+    <div class="lex-setting-group">
+      <label class="lex-check">
+        <input type="checkbox" id="lex-s-scene-detect" />
+        <b>Auto-detect scene type</b>
+      </label>
+      <div class="lex-hint">Detects social/action/investigation/etc. from context. Boosts entries tagged with matching scene types.</div>
+      <div class="lex-scene-override-row" style="margin-top:6px;">
+        <span class="lex-hint" style="margin-right:6px;">Manual override:</span>
+        <select id="lex-s-scene-override" style="flex:1;">
+          <option value="">Auto (no override)</option>
+          ${Object.entries(SCENE_TYPE_META).map(([key, meta]) =>
+            `<option value="${key}">${meta.icon} ${meta.label}</option>`
+          ).join('\n          ')}
+        </select>
+      </div>
+    </div>
+
+    <div class="lex-setting-group">
+      <div class="lex-setting-label"><b>Injection cooldown</b> <span id="lex-cooldown-val">3</span>x in 10 msgs
+        <span class="lex-hint">(deprioritize entries that fire too often)</span>
+      </div>
+      <input type="range" id="lex-s-cooldown" min="2" max="10" value="3" />
     </div>
 
     <div class="lex-setting-group">
@@ -474,6 +507,25 @@ function bindAllEvents() {
 
     $('#lex-s-autohint').on('change', function () {
         getSettings().autoHintGeneration = this.checked;
+        saveSettings();
+    });
+
+    // v2.1 settings
+    $('#lex-s-scene-detect').on('change', function () {
+        getSettings().enableSceneDetection = this.checked;
+        saveSettings();
+    });
+
+    $('#lex-s-scene-override').on('change', function () {
+        const chatState = getChatState();
+        chatState.sceneTypeOverride = this.value || null;
+        saveChatData();
+    });
+
+    $('#lex-s-cooldown').on('input', function () {
+        const v = parseInt(this.value);
+        getSettings().injectionCooldownThreshold = v;
+        $('#lex-cooldown-val').text(v);
         saveSettings();
     });
 
@@ -785,6 +837,9 @@ function saveEntry() {
     const relatedIds = relatedRaw ? relatedRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
     const revealTier = $('#lex-f-tier').val() || REVEAL_TIERS.BACKGROUND;
     const hintText = $('#lex-f-hint').val().trim();
+    // v2.1: collect scene types from checkboxes
+    const scene_types = [];
+    $('#lex-f-scene-types input:checked').each(function() { scene_types.push($(this).val()); });
 
     if (!title) { toastr.warning('Please enter a title'); return; }
     if (!content) { toastr.warning('Please enter content'); return; }
@@ -805,6 +860,7 @@ function saveEntry() {
         gateConditions: [...formGates],
         chekhov: existingChekhov,
         narrativeState: editingEntry?.narrativeState || NARRATIVE_STATES.DORMANT,
+        scene_types,
     };
 
     // Recompute narrative state
@@ -853,6 +909,13 @@ function openEditEntry(id, scope) {
     $('#lex-f-related').val((entry.relatedIds || []).join(', '));
     $('#lex-f-tier').val(entry.revealTier || 'background');
     $('#lex-f-hint').val(entry.hintText || '');
+    // v2.1: restore scene type checkboxes
+    $('#lex-f-scene-types input').prop('checked', false);
+    if (Array.isArray(entry.scene_types)) {
+        for (const st of entry.scene_types) {
+            $(`#lex-f-scene-types input[value="${st}"]`).prop('checked', true);
+        }
+    }
     $('#lex-f-id-text').text(entry.id);
     $('#lex-f-id-display').show();
     $('#lex-cancel-btn').show();
@@ -893,6 +956,7 @@ function clearForm() {
     $('#lex-f-related').val('');
     $('#lex-f-tier').val('background');
     $('#lex-f-hint').val('');
+    $('#lex-f-scene-types input').prop('checked', false);
     $('#lex-f-id-display').hide();
     formGates = [];
     renderFormGates();
@@ -996,6 +1060,12 @@ function renderSettingsTab() {
     $('#lex-s-enabled').prop('checked', settings.enabled);
     $('#lex-s-pacing').prop('checked', settings.enableNarrativePacing);
     $('#lex-s-autohint').prop('checked', settings.autoHintGeneration);
+    // v2.1 settings
+    $('#lex-s-scene-detect').prop('checked', settings.enableSceneDetection !== false);
+    $('#lex-s-cooldown').val(settings.injectionCooldownThreshold || 3);
+    $('#lex-cooldown-val').text(settings.injectionCooldownThreshold || 3);
+    const chatState = getChatState();
+    $('#lex-s-scene-override').val(chatState.sceneTypeOverride || '');
     $(`input[name="lex-trigger"][value="${settings.triggerMode}"]`).prop('checked', true);
     $('#lex-every-n-row').toggle(settings.triggerMode === 'every_n');
     $('#lex-s-n').val(settings.triggerEveryN);

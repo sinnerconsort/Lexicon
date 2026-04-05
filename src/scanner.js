@@ -2,10 +2,11 @@ import { getContext } from '../../../../extensions.js';
 import { generateRaw } from '../../../../../script.js';
 import {
     getSettings, getChatState, getCharacterKey, areGatesMet,
+    hasPendingBoost, isEntryCoolingDown, getEffectiveSceneType,
 } from './state.js';
 import { getLorebookEntries } from './lorebook.js';
 import {
-    REVEAL_TIERS, NARRATIVE_ACTIONS, REVEAL_TIER_META,
+    REVEAL_TIERS, NARRATIVE_ACTIONS, REVEAL_TIER_META, SCENE_TYPE_META,
 } from './config.js';
 
 // ─── Candidate Collection ─────────────────────────────────────────────────────
@@ -65,9 +66,6 @@ export function getRecentContext(messageCount = 5) {
         .join('\n\n');
 }
 
-/**
- * Get a broader story summary (last 15 messages) for readiness evaluation.
- */
 export function getBroadContext(messageCount = 15) {
     const ctx = getContext();
     if (!ctx?.chat?.length) return '';
@@ -76,7 +74,6 @@ export function getBroadContext(messageCount = 15) {
     return msgs
         .map(msg => {
             const name = msg.is_user ? (ctx.name1 || 'User') : (ctx.name2 || 'AI');
-            // Shorter per-message to fit more context
             const text = (msg.mes || '').substring(0, 200);
             return `${name}: ${text}`;
         })
@@ -85,16 +82,13 @@ export function getBroadContext(messageCount = 15) {
 
 // ─── AI Scoring — Narrative Director ──────────────────────────────────────────
 
-/**
- * v2: Score entries with narrative awareness.
- * Returns array of { id, relevance, action, readiness, reason }.
- * Pinned entries always INJECT. Background entries use relevance only.
- * Foreshadow/Gated/Twist entries get the full narrative evaluation.
- */
 export async function scoreEntriesWithAI(candidates, context) {
     if (!candidates.length) return [];
 
     const settings = getSettings();
+    const chatState = getChatState();
+    const ctx = getContext();
+    const currentMsgIndex = ctx?.chat?.length || 0;
 
     // Pinned entries always inject — skip scoring
     const pinned = candidates.filter(e => e.pinned);
@@ -139,8 +133,14 @@ export async function scoreEntriesWithAI(candidates, context) {
         results = results.concat(narrativeResults);
     }
 
-    // Apply relationship boost across all results
-    const boosted = applyRelationshipBoost(results, scoreable, candidates);
+    // v2.1: Apply next-cycle related entry boost (from previous scan)
+    results = applyRelatedBoost(results, chatState);
+
+    // v2.1: Apply scene type boost
+    results = applySceneTypeBoost(results, candidates, chatState);
+
+    // v2.1: Apply injection cooldown penalty
+    results = applyInjectionCooldown(results, chatState, currentMsgIndex, settings);
 
     // Pinned always first
     const pinnedResults = pinned.map((e, i) => ({
@@ -148,10 +148,10 @@ export async function scoreEntriesWithAI(candidates, context) {
         action: NARRATIVE_ACTIONS.INJECT, pinned: true,
     }));
 
-    return [...pinnedResults, ...boosted];
+    return [...pinnedResults, ...results];
 }
 
-// ─── v1 Relevance-Only Scoring (for background entries or pacing-off mode) ───
+// ─── v1 Relevance-Only Scoring ───────────────────────────────────────────────
 
 async function scoreRelevanceOnly(scoreable, pinned, context, settings) {
     const entryList = scoreable.map(e => {
@@ -264,7 +264,6 @@ Return ONLY the JSON array. No other text.`;
     const parsed = parseJsonArrayOfObjects(responseText);
     if (!parsed) {
         console.warn('[Lexicon] Could not parse narrative response:', responseText?.substring(0, 300));
-        // Fallback: suppress all narrative entries (safe default)
         return narrativeEntries.map(e => ({
             id: e.id,
             relevance: 0,
@@ -273,7 +272,6 @@ Return ONLY the JSON array. No other text.`;
         }));
     }
 
-    // Map parsed results, validating against our entry list
     const validIds = new Set(narrativeEntries.map(e => e.id));
     return parsed
         .filter(r => validIds.has(r.id))
@@ -286,9 +284,6 @@ Return ONLY the JSON array. No other text.`;
         }));
 }
 
-/**
- * Build concise gate info string for the scoring prompt.
- */
 function buildGateInfo(entry) {
     if (!entry.gateConditions?.length) return '';
     const met = entry.gateConditions.filter(g => g.met).length;
@@ -299,12 +294,92 @@ function buildGateInfo(entry) {
     return ` | Gates:${met}/${total} (${conditions})`;
 }
 
-// ─── Auto-Hint Generation ─────────────────────────────────────────────────────
+// ─── v2.1: Related Entry Boost (Next-Cycle) ──────────────────────────────────
 
 /**
- * Generate a breadcrumb hint from full entry content via AI.
- * Only called when entry has no manual hintText and autoHintGeneration is on.
+ * Apply priority boost to entries that had a pending related boost from last scan.
+ * This replaces the old same-cycle applyRelationshipBoost.
+ * Boost = doubled relevance score, equivalent to `high` priority for one cycle.
  */
+function applyRelatedBoost(scored, chatState) {
+    if (!chatState?.pendingRelatedBoosts?.length) return scored;
+
+    const boostSet = new Set(chatState.pendingRelatedBoosts);
+
+    return scored.map(s => {
+        if (boostSet.has(s.id)) {
+            // Double the relevance score (equivalent to `high` priority)
+            // But only upgrade SUPPRESS → HINT at most, don't force INJECT
+            const boostedRelevance = Math.min((s.relevance || 0) * 2, 10);
+            const upgradedAction = s.action === NARRATIVE_ACTIONS.SUPPRESS && boostedRelevance >= 3
+                ? NARRATIVE_ACTIONS.HINT
+                : s.action;
+            return {
+                ...s,
+                relevance: boostedRelevance,
+                action: upgradedAction,
+                relatedBoosted: true,
+            };
+        }
+        return s;
+    });
+}
+
+// ─── v2.1: Scene Type Boost ──────────────────────────────────────────────────
+
+/**
+ * Boost entries whose scene_types match the current detected/override scene type.
+ * Entries with matching scene_types get doubled relevance (same as `high` priority).
+ * Entries without scene_types or with non-matching types are unchanged.
+ */
+function applySceneTypeBoost(scored, allCandidates, chatState) {
+    const sceneType = getEffectiveSceneType(chatState);
+    if (!sceneType) return scored;
+
+    const entryMap = new Map(allCandidates.map(e => [e.id, e]));
+
+    return scored.map(s => {
+        const entry = entryMap.get(s.id);
+        if (!entry?.scene_types?.length) return s; // No scene_types = scene-agnostic
+
+        if (entry.scene_types.includes(sceneType)) {
+            // Matching scene type → boost
+            return {
+                ...s,
+                relevance: Math.min((s.relevance || 0) * 2, 10),
+                sceneTypeBoosted: true,
+            };
+        }
+        // Non-matching scene types are NOT penalized — they just don't get the boost
+        return s;
+    });
+}
+
+// ─── v2.1: Injection Cooldown ────────────────────────────────────────────────
+
+/**
+ * Deprioritize entries that have been injected too frequently recently.
+ * If an entry has fired >= threshold times in the last 10 messages, halve its relevance.
+ */
+function applyInjectionCooldown(scored, chatState, currentMsgIndex, settings) {
+    const threshold = settings.injectionCooldownThreshold || 3;
+
+    return scored.map(s => {
+        if (s.pinned) return s; // Pinned entries are immune
+
+        if (isEntryCoolingDown(chatState, s.id, currentMsgIndex, threshold, 10)) {
+            return {
+                ...s,
+                relevance: Math.max(0, Math.floor((s.relevance || 0) / 2)),
+                coolingDown: true,
+            };
+        }
+        return s;
+    });
+}
+
+// ─── Auto-Hint Generation ─────────────────────────────────────────────────────
+
 export async function generateHintText(entry) {
     const prompt = `You are a narrative hint generator. Given the following lore entry, write a SHORT, OBLIQUE breadcrumb that teases its existence without revealing the secret. The hint should make the AI reference this topic vaguely or atmospherically.
 
@@ -323,44 +398,9 @@ Return ONLY the hint text. No quotes, no explanation.`;
         return (hint || '').trim().substring(0, 500);
     } catch (err) {
         console.warn('[Lexicon] Hint generation failed:', err);
-        // Fallback: extract first sentence + ellipsis
         const firstSentence = (entry.content || '').split(/[.!?]/)[0];
         return firstSentence ? `Something about ${entry.title}...` : '';
     }
-}
-
-// ─── Relationship Boost ───────────────────────────────────────────────────────
-
-function applyRelationshipBoost(scored, scoreable, allCandidates) {
-    const selectedIds = new Set(scored.filter(s =>
-        s.action === NARRATIVE_ACTIONS.INJECT || s.action === NARRATIVE_ACTIONS.HINT
-    ).map(s => s.id));
-
-    const boostQueue = [];
-
-    for (const s of scored) {
-        if (s.action === NARRATIVE_ACTIONS.SUPPRESS) continue;
-        const entry = allCandidates.find(e => e.id === s.id);
-        if (!entry?.relatedIds?.length) continue;
-
-        for (const relId of entry.relatedIds) {
-            if (!selectedIds.has(relId)) {
-                const relEntry = allCandidates.find(e => e.id === relId);
-                if (relEntry) {
-                    selectedIds.add(relId);
-                    boostQueue.push({
-                        id: relId,
-                        relevance: 0.5,
-                        readiness: 5,
-                        action: NARRATIVE_ACTIONS.INJECT,
-                        boosted: true,
-                    });
-                }
-            }
-        }
-    }
-
-    return [...scored, ...boostQueue];
 }
 
 // ─── AI Communication ─────────────────────────────────────────────────────────
@@ -420,7 +460,6 @@ function parseJsonArray(text) {
 function parseJsonArrayOfObjects(text) {
     if (!text) return null;
     const cleaned = text.trim().replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-    // Find the outermost array
     const start = cleaned.indexOf('[');
     const end = cleaned.lastIndexOf(']');
     if (start === -1 || end === -1 || end <= start) return null;

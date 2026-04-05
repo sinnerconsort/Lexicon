@@ -2,7 +2,8 @@ import { setExtensionPrompt } from '../../../../../script.js';
 import { getContext } from '../../../../extensions.js';
 import {
     getSettings, getChatState, recordSeed, recordFired,
-    addTimelineEvent,
+    addTimelineEvent, recordInjectionEvent, detectSceneType,
+    computePendingRelatedBoosts,
 } from './state.js';
 import {
     getAllCandidateEntries, scoreEntriesWithAI, getRecentContext,
@@ -37,6 +38,7 @@ export async function scanAndInject(options = {}) {
         const settings = getSettings();
         const chatState = getChatState();
         const ctx = getContext();
+        const currentMsgIndex = ctx?.chat?.length || 0;
 
         const candidates = await getAllCandidateEntries();
 
@@ -45,9 +47,16 @@ export async function scanAndInject(options = {}) {
             chatState.currentInjectedIds = [];
             chatState.currentRelevanceScores = {};
             chatState.narrativeActions = {};
+            chatState.pendingRelatedBoosts = [];
             saveChatData();
             dispatchUpdateEvent();
             return;
+        }
+
+        // v2.1: Detect scene type from recent context
+        if (settings.enableSceneDetection) {
+            const context = getRecentContext(3);
+            chatState.detectedSceneType = detectSceneType(context);
         }
 
         // Get recent context for scoring
@@ -79,6 +88,8 @@ export async function scanAndInject(options = {}) {
             const entry = candidates.find(e => e.id === s.id);
             if (entry) {
                 loreLines.push(buildFullBlock(entry));
+                // v2.1: Record injection event
+                recordInjectionEvent(chatState, entry.id, currentMsgIndex, 'INJECT');
             }
         }
 
@@ -87,10 +98,11 @@ export async function scanAndInject(options = {}) {
             const entry = candidates.find(e => e.id === s.id);
             if (entry) {
                 loreLines.push(buildFullBlock(entry));
-                // Track: Chekhov fired
                 updateEntryNarrative(entry, NARRATIVE_ACTIONS.INJECT, settings);
                 addTimelineEvent(chatState, entry.id, entry.title, 'INJECT',
                     context.substring(0, 120));
+                // v2.1: Record injection event
+                recordInjectionEvent(chatState, entry.id, currentMsgIndex, 'INJECT');
             }
         }
 
@@ -102,10 +114,11 @@ export async function scanAndInject(options = {}) {
                 if (hintContent) {
                     loreLines.push(buildHintBlock(entry, hintContent));
                 }
-                // Track: Chekhov seed
                 updateEntryNarrative(entry, NARRATIVE_ACTIONS.HINT, settings);
                 addTimelineEvent(chatState, entry.id, entry.title, 'HINT',
                     context.substring(0, 120));
+                // v2.1: Record injection event
+                recordInjectionEvent(chatState, entry.id, currentMsgIndex, 'HINT');
             }
         }
 
@@ -113,11 +126,16 @@ export async function scanAndInject(options = {}) {
         for (const s of suppressedScored) {
             const entry = candidates.find(e => e.id === s.id);
             if (entry && (s.relevance || 0) >= 3) {
-                // Only log suppression if the entry was actually relevant
                 addTimelineEvent(chatState, entry.id, entry.title, 'SUPPRESS',
                     s.reason || 'Not ready yet');
             }
         }
+
+        // v2.1: Compute pending related boosts for NEXT scan cycle
+        const injectedEntries = allActive
+            .map(s => candidates.find(e => e.id === s.id))
+            .filter(Boolean);
+        chatState.pendingRelatedBoosts = computePendingRelatedBoosts(injectedEntries, candidates);
 
         // Store all scores and actions in chat state
         const scores = {};
@@ -129,7 +147,7 @@ export async function scanAndInject(options = {}) {
         chatState.currentRelevanceScores = scores;
         chatState.narrativeActions = actions;
         chatState.currentInjectedIds = allActive.map(s => s.id);
-        chatState.lastScanAt = ctx?.chat?.length || 0;
+        chatState.lastScanAt = currentMsgIndex;
         chatState.lastScanTime = Date.now();
 
         // Do the actual injection
@@ -147,7 +165,7 @@ export async function scanAndInject(options = {}) {
         }
 
         saveChatData();
-        saveSettings(); // Save Chekhov tracking updates on entries
+        saveSettings();
         dispatchUpdateEvent();
 
     } catch (err) {
@@ -182,21 +200,15 @@ function buildHintBlock(entry, hintContent) {
 
 // ─── Hint Resolution ──────────────────────────────────────────────────────────
 
-/**
- * Get hint text: manual override → cached auto-hint → generate new.
- */
 async function resolveHintText(entry, settings) {
-    // Manual hint always wins
     if (entry.hintText && entry.hintText.trim()) {
         return entry.hintText;
     }
 
-    // Auto-generate if enabled
     if (settings.autoHintGeneration) {
         try {
             const generated = await generateHintText(entry);
             if (generated) {
-                // Cache it on the entry so we don't regenerate every time
                 entry.hintText = generated;
                 return generated;
             }
@@ -205,7 +217,6 @@ async function resolveHintText(entry, settings) {
         }
     }
 
-    // Last resort: generic breadcrumb
     return `There is something significant about ${entry.title || 'this'} that may become important...`;
 }
 

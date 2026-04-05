@@ -26,12 +26,14 @@ export function exportCompendium() {
     const settings = getSettings();
     const chatState = getChatState();
     const exportData = {
-        version: 2,
+        version: 3,
         exported: new Date().toISOString(),
         entries: settings.entries,
         characterEntries: settings.characterEntries,
-        // v2: include narrative timeline from current chat
+        // v2: narrative timeline
         narrativeTimeline: chatState?.narrativeTimeline || [],
+        // v2.1: injection history
+        injectionHistory: chatState?.injectionHistory || { log: [], frequency_map: {} },
     };
     return JSON.stringify(exportData, null, 2);
 }
@@ -47,22 +49,20 @@ export function importCompendium(jsonString, mode = 'merge') {
             convertedEntries = data.entries;
 
         } else if (data.entries && typeof data.entries === 'object' && !Array.isArray(data.entries)) {
-            // ST World Info format: { entries: { "0": { uid, key, content, comment }, "1": {...} } }
+            // ST World Info format
             convertedEntries = convertSTLorebookEntries(Object.values(data.entries));
 
         } else if (data.entries && Array.isArray(data.entries) && data.entries[0]?.key !== undefined) {
-            // ST Character Book format: { entries: [ { uid, key, content, comment }, ... ] }
+            // ST Character Book format
             convertedEntries = convertSTLorebookEntries(data.entries);
 
         } else if (data.character_book?.entries) {
-            // Embedded in a character card export
             const raw = Array.isArray(data.character_book.entries)
                 ? data.character_book.entries
                 : Object.values(data.character_book.entries);
             convertedEntries = convertSTLorebookEntries(raw);
 
         } else if (data.data?.character_book?.entries) {
-            // V2 card spec: { data: { character_book: { entries: [...] } } }
             const raw = Array.isArray(data.data.character_book.entries)
                 ? data.data.character_book.entries
                 : Object.values(data.data.character_book.entries);
@@ -84,7 +84,6 @@ export function importCompendium(jsonString, mode = 'merge') {
             settings.characterEntries = data.characterEntries || settings.characterEntries;
         } else {
             const existingIds = new Set(settings.entries.map(e => e.id));
-            // Also deduplicate by title+content hash to catch re-imports
             const existingHashes = new Set(settings.entries.map(e => `${e.title}|||${(e.content || '').substring(0, 100)}`));
             const newEntries = convertedEntries.filter(e => {
                 if (existingIds.has(e.id)) return false;
@@ -94,7 +93,6 @@ export function importCompendium(jsonString, mode = 'merge') {
             });
             settings.entries = [...settings.entries, ...newEntries];
 
-            // Handle Lexicon native characterEntries if present
             if (data.characterEntries) {
                 for (const [key, entries] of Object.entries(data.characterEntries)) {
                     if (!settings.characterEntries[key]) {
@@ -119,7 +117,6 @@ export function importCompendium(jsonString, mode = 'merge') {
 
 /**
  * Convert ST lorebook/world-info entries to Lexicon format.
- * All entries come in as "Background" tier — user tags them after import.
  */
 function convertSTLorebookEntries(rawEntries) {
     return rawEntries
@@ -138,19 +135,18 @@ function convertSTLorebookEntries(rawEntries) {
                 relatedIds: [],
                 fromLorebook: true,
                 lorebookKey: keywords,
-                // Narrative pacing — defaults, user tags after import
+                // v2
                 revealTier: 'background',
                 hintText: '',
                 gateConditions: [],
                 chekhov: { seedCount: 0, plantedAt: null, firedAt: null, lastHintAt: null },
                 narrativeState: 'dormant',
+                // v2.1
+                scene_types: [],
             };
         });
 }
 
-/**
- * Rough auto-guess for entry category based on title/content keywords.
- */
 function guessCategory(title, content) {
     const text = `${title} ${content}`.toLowerCase();
     if (/\b(city|town|village|district|street|building|tavern|palace|ruin|forest|mountain|river|sea|region|ward|quarter)\b/.test(text)) return 'Location';

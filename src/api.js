@@ -1,31 +1,23 @@
 /**
- * Lexicon Public API
- * Exposes a lightweight read-only interface for other extensions.
+ * Lexicon Public API v2.1
+ * Exposes a read-only interface for other extensions.
  * Access via: window.LexiconAPI (available after Lexicon init)
- *
- * Usage from another extension (e.g. Spark):
- *   if (window.LexiconAPI) {
- *       const lore = window.LexiconAPI.getBackgroundEntries();
- *       const hints = window.LexiconAPI.getHintableEntries();
- *   }
  */
 
-import { getSettings, getChatState, getCharacterKey, computeNarrativeState } from './state.js';
+import {
+    getSettings, getChatState, getCharacterKey, computeNarrativeState,
+    getEntryFrequency, getMostFrequentEntries, getEntriesFiredSince,
+    getEffectiveSceneType,
+} from './state.js';
 import { getAllCandidateEntries } from './scanner.js';
 import {
     REVEAL_TIERS, NARRATIVE_ACTIONS, NARRATIVE_STATES, REVEAL_TIER_META,
+    SCENE_TYPE_META,
 } from './config.js';
 import { getContext } from '../../../../extensions.js';
 
-/**
- * Get all active entries, optionally filtered.
- * @param {object} [filter] - Optional filter object
- * @param {string} [filter.scope] - 'global' | 'character' | 'chat'
- * @param {string} [filter.revealTier] - 'background' | 'foreshadow' | 'gated' | 'twist'
- * @param {string} [filter.category] - Entry category string
- * @param {boolean} [filter.enabledOnly] - Only return enabled entries (default: true)
- * @returns {Promise<Array>} Filtered entry objects (cloned, safe to mutate)
- */
+// ─── Existing v2 Methods (unchanged) ─────────────────────────────────────────
+
 async function getEntries(filter = {}) {
     const candidates = await getAllCandidateEntries();
     let results = candidates;
@@ -43,26 +35,20 @@ async function getEntries(filter = {}) {
     if (filter.enabledOnly !== false) {
         results = results.filter(e => e.enabled !== false);
     }
+    // v2.1: filter by scene_type if specified
+    if (filter.sceneType) {
+        results = results.filter(e =>
+            Array.isArray(e.scene_types) && e.scene_types.includes(filter.sceneType)
+        );
+    }
 
-    // Return clones so consumers can't mutate our state
     return results.map(e => ({ ...e }));
 }
 
-/**
- * Get entries safe to openly reference — background tier only.
- * Ideal for Spark scenario hooks that should use lore without spoiling.
- * @returns {Promise<Array>}
- */
 async function getBackgroundEntries() {
     return getEntries({ revealTier: REVEAL_TIERS.BACKGROUND });
 }
 
-/**
- * Get entries suitable for atmospheric hints — foreshadow + gated (not yet met).
- * Returns a simplified shape: { id, title, hintText, category, revealTier, seedCount }.
- * Full content is intentionally withheld so consuming extensions can't accidentally reveal.
- * @returns {Promise<Array>}
- */
 async function getHintableEntries() {
     const candidates = await getAllCandidateEntries();
     return candidates
@@ -70,7 +56,7 @@ async function getHintableEntries() {
             const tier = e.revealTier || 'background';
             return (tier === REVEAL_TIERS.FORESHADOW || tier === REVEAL_TIERS.GATED)
                 && e.enabled !== false
-                && !e.chekhov?.firedAt; // Not yet fully revealed
+                && !e.chekhov?.firedAt;
         })
         .map(e => ({
             id: e.id,
@@ -80,14 +66,10 @@ async function getHintableEntries() {
             revealTier: e.revealTier,
             seedCount: e.chekhov?.seedCount || 0,
             narrativeState: computeNarrativeState(e),
+            scene_types: e.scene_types || [],
         }));
 }
 
-/**
- * Get the narrative state of a specific entry.
- * @param {string} entryId
- * @returns {Promise<object|null>} { narrativeState, action, relevance, seedCount, firedAt }
- */
 async function getNarrativeState(entryId) {
     const candidates = await getAllCandidateEntries();
     const entry = candidates.find(e => e.id === entryId);
@@ -104,16 +86,10 @@ async function getNarrativeState(entryId) {
         seedCount: entry.chekhov?.seedCount || 0,
         firedAt: entry.chekhov?.firedAt || null,
         revealTier: entry.revealTier || 'background',
+        scene_types: entry.scene_types || [],
     };
 }
 
-/**
- * Get a compact lore summary block suitable for prompt injection.
- * Returns background entries as full text + hintable entries as hint-only text.
- * Designed for extensions like Spark that want a ready-to-use lore context block.
- * @param {number} [maxEntries=10] - Max total entries to include
- * @returns {Promise<string>} Formatted lore block
- */
 async function getLoreContextBlock(maxEntries = 10) {
     const bg = await getBackgroundEntries();
     const hints = await getHintableEntries();
@@ -121,7 +97,6 @@ async function getLoreContextBlock(maxEntries = 10) {
     const parts = [];
     let count = 0;
 
-    // Background entries: full content (truncated)
     for (const e of bg) {
         if (count >= maxEntries) break;
         const content = (e.content || '').substring(0, 300);
@@ -129,7 +104,6 @@ async function getLoreContextBlock(maxEntries = 10) {
         count++;
     }
 
-    // Hintable entries: hint text only (no full content exposed)
     for (const e of hints) {
         if (count >= maxEntries) break;
         if (e.hintText) {
@@ -144,28 +118,92 @@ async function getLoreContextBlock(maxEntries = 10) {
     return parts.join('\n');
 }
 
-/**
- * Check if Lexicon is enabled and active.
- * @returns {boolean}
- */
 function isActive() {
     const settings = getSettings();
     return settings?.enabled === true;
 }
 
-/**
- * Get available tier metadata (labels, icons, colors).
- * Useful for extensions that want to render Lexicon-style tier badges.
- * @returns {object}
- */
 function getTierMeta() {
     return { ...REVEAL_TIER_META };
+}
+
+// ─── v2.1: Injection History Methods ─────────────────────────────────────────
+
+/**
+ * Get the injection history log, optionally limited to last N entries.
+ * @param {number} [lastN] - Return only the most recent N log entries
+ * @returns {Array} Log entries: { entry_id, message_index, action, timestamp }
+ */
+function getInjectionHistory(lastN) {
+    const chatState = getChatState();
+    const log = chatState?.injectionHistory?.log || [];
+    if (lastN && lastN > 0) return log.slice(-lastN);
+    return [...log];
+}
+
+/**
+ * Get injection frequency for a specific entry.
+ * @param {string} entryId
+ * @returns {{ count: number, last_injected_msg: number }}
+ */
+function getEntryFrequencyAPI(entryId) {
+    const chatState = getChatState();
+    return getEntryFrequency(chatState, entryId);
+}
+
+/**
+ * Get the top N most frequently injected entries.
+ * @param {number} [topN=5]
+ * @returns {Array} { entry_id, count, last_injected_msg }
+ */
+function getMostFrequentEntriesAPI(topN = 5) {
+    const chatState = getChatState();
+    return getMostFrequentEntries(chatState, topN);
+}
+
+/**
+ * Get all injection events since a specific message index.
+ * @param {number} messageIndex
+ * @returns {Array} Log entries
+ */
+function getEntriesFiredSinceAPI(messageIndex) {
+    const chatState = getChatState();
+    return getEntriesFiredSince(chatState, messageIndex);
+}
+
+// ─── v2.1: Scene Type Methods ────────────────────────────────────────────────
+
+/**
+ * Get the current effective scene type (override > detected).
+ * @returns {string|null}
+ */
+function getCurrentSceneType() {
+    const chatState = getChatState();
+    return getEffectiveSceneType(chatState);
+}
+
+/**
+ * Get scene type metadata (labels, icons, descriptions).
+ * @returns {object}
+ */
+function getSceneTypeMeta() {
+    return { ...SCENE_TYPE_META };
+}
+
+/**
+ * Get entries filtered by scene type.
+ * @param {string} sceneType
+ * @returns {Promise<Array>}
+ */
+async function getEntriesBySceneType(sceneType) {
+    return getEntries({ sceneType });
 }
 
 // ─── Registration ─────────────────────────────────────────────────────────────
 
 export function registerAPI() {
     window.LexiconAPI = {
+        // v2 (unchanged)
         getEntries,
         getBackgroundEntries,
         getHintableEntries,
@@ -173,9 +211,19 @@ export function registerAPI() {
         getLoreContextBlock,
         isActive,
         getTierMeta,
-        version: '2.0.0',
+        // v2.1: Injection History
+        getInjectionHistory,
+        getEntryFrequency: getEntryFrequencyAPI,
+        getMostFrequentEntries: getMostFrequentEntriesAPI,
+        getEntriesFiredSince: getEntriesFiredSinceAPI,
+        // v2.1: Scene Types
+        getCurrentSceneType,
+        getSceneTypeMeta,
+        getEntriesBySceneType,
+        // Meta
+        version: '2.1.0',
     };
-    console.log('[Lexicon] Public API registered → window.LexiconAPI');
+    console.log('[Lexicon] Public API v2.1 registered → window.LexiconAPI');
 }
 
 export function unregisterAPI() {
