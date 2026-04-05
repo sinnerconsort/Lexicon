@@ -143,6 +143,7 @@ function convertSTLorebookEntries(rawEntries) {
                 narrativeState: 'dormant',
                 // v2.1
                 scene_types: [],
+                resolution: { status: 'active', evolution_log: [] },
             };
         });
 }

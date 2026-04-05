@@ -12,7 +12,7 @@ import {
 import { getAllCandidateEntries } from './scanner.js';
 import {
     REVEAL_TIERS, NARRATIVE_ACTIONS, NARRATIVE_STATES, REVEAL_TIER_META,
-    SCENE_TYPE_META,
+    SCENE_TYPE_META, RESOLUTION_META,
 } from './config.js';
 import { getContext } from '../../../../extensions.js';
 
@@ -199,6 +199,71 @@ async function getEntriesBySceneType(sceneType) {
     return getEntries({ sceneType });
 }
 
+// ─── v2.1: Resolution Methods ────────────────────────────────────────────────
+
+/**
+ * Get the resolution status and evolution log for a specific entry.
+ * @param {string} entryId
+ * @returns {Promise<object|null>} { status, evolution_log }
+ */
+async function getResolutionStatus(entryId) {
+    const candidates = await getAllCandidateEntries();
+    const entry = candidates.find(e => e.id === entryId);
+    if (!entry) return null;
+    return {
+        status: entry.resolution?.status || 'active',
+        evolution_log: entry.resolution?.evolution_log || [],
+    };
+}
+
+/**
+ * Get all entries filtered by resolution status.
+ * @param {string} status - active, softening, resolved, dormant_resolution
+ * @returns {Promise<Array>}
+ */
+async function getEntriesByResolutionStatus(status) {
+    const candidates = await getAllCandidateEntries();
+    return candidates
+        .filter(e => (e.resolution?.status || 'active') === status)
+        .map(e => ({ ...e }));
+}
+
+/**
+ * Get the evolution timeline across all entries — every status change, sorted chronologically.
+ * Useful for Chronicler to understand character growth trajectory.
+ * @returns {Promise<Array>} { entry_id, entry_title, from, to, reason, timestamp }
+ */
+async function getResolutionTimeline() {
+    const candidates = await getAllCandidateEntries();
+    const timeline = [];
+
+    for (const e of candidates) {
+        const log = e.resolution?.evolution_log;
+        if (!Array.isArray(log) || !log.length) continue;
+        for (const ev of log) {
+            timeline.push({
+                entry_id: e.id,
+                entry_title: e.title || 'Untitled',
+                ...ev,
+            });
+        }
+    }
+
+    return timeline.sort((a, b) => {
+        const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return ta - tb;
+    });
+}
+
+/**
+ * Get resolution metadata (labels, icons, colors, descriptions).
+ * @returns {object}
+ */
+function getResolutionMeta() {
+    return { ...RESOLUTION_META };
+}
+
 // ─── Registration ─────────────────────────────────────────────────────────────
 
 export function registerAPI() {
@@ -220,6 +285,11 @@ export function registerAPI() {
         getCurrentSceneType,
         getSceneTypeMeta,
         getEntriesBySceneType,
+        // v2.1: Resolution
+        getResolutionStatus,
+        getEntriesByResolutionStatus,
+        getResolutionTimeline,
+        getResolutionMeta,
         // Meta
         version: '2.1.0',
     };

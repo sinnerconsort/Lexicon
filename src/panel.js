@@ -10,9 +10,9 @@ import { clearLorebookCache, lorebookStatus } from './lorebook.js';
 import {
     EXT_DISPLAY_NAME, CATEGORIES, REVEAL_TIERS, REVEAL_TIER_META,
     NARRATIVE_ACTIONS, NARRATIVE_STATES,
-    SCENE_TYPE_META,
+    SCENE_TYPE_META, RESOLUTION_META,
 } from './config.js';
-import { getEffectiveSceneType } from './state.js';
+import { getEffectiveSceneType, setResolutionStatus } from './state.js';
 
 let editingEntry = null;
 
@@ -283,6 +283,24 @@ function createPanel() {
         ).join('\n        ')}
       </div>
 
+      <div class="lex-form-section-header">🩹 Resolution & Healing</div>
+
+      <label>Resolution Status</label>
+      <select id="lex-f-resolution">
+        ${Object.entries(RESOLUTION_META).map(([key, meta]) =>
+          `<option value="${key}">${meta.icon} ${meta.label} — ${meta.desc}</option>`
+        ).join('\n        ')}
+      </select>
+      <div class="lex-resolution-desc" id="lex-resolution-desc"></div>
+
+      <label>Reason for status change <span class="lex-hint">(logged in evolution history)</span></label>
+      <input type="text" id="lex-f-resolution-reason" placeholder="e.g. Danny acknowledged not all authority is threatening…" />
+
+      <div id="lex-f-evolution-log" class="lex-evolution-log" style="display:none;">
+        <label>Evolution History</label>
+        <div id="lex-f-evolution-entries" class="lex-evolution-entries"></div>
+      </div>
+
       <div class="lex-entry-id-display" id="lex-f-id-display" style="display:none;">
         ID: <code id="lex-f-id-text"></code>
       </div>
@@ -487,6 +505,7 @@ function bindAllEvents() {
     $('#lex-cancel-btn').on('click', cancelEdit);
     $('#lex-clear-form-btn').on('click', clearForm);
     $('#lex-f-tier').on('change', updateTierDesc);
+    $('#lex-f-resolution').on('change', updateResolutionDesc);
     $('#lex-f-gate-add').on('click', addGateCondition);
     // Allow Enter key in gate input
     $('#lex-f-gate-input').on('keydown', function (e) {
@@ -649,7 +668,7 @@ export function gotoTab(name) {
     $(`#lexicon-pane-${name}`).show();
 
     if (name === 'entries') renderEntriesList();
-    if (name === 'edit') updateTierDesc();
+    if (name === 'edit') { updateTierDesc(); updateResolutionDesc(); }
     if (name === 'timeline') renderTimeline();
     if (name === 'settings') renderSettingsTab();
     if (name === 'debug') renderDebugTab();
@@ -746,6 +765,13 @@ export function renderEntriesList() {
                 ).join('') + '</div>';
         }
 
+        // v2.1: Resolution badge (only show if not 'active' — active is the default)
+        const resStatus = e.resolution?.status || 'active';
+        const resMeta = RESOLUTION_META[resStatus];
+        const resBadge = resStatus !== 'active' && resMeta
+            ? `<span class="lex-badge lex-res-badge" style="border-color:${resMeta.color}" title="${resMeta.desc}">${resMeta.icon} ${resMeta.label}</span>`
+            : '';
+
         return `
 <div class="lex-entry-card ${isActive ? 'lex-entry-active' : ''} lex-tier-${e.revealTier || 'background'}" data-id="${xss(e.id)}">
   <div class="lex-entry-top">
@@ -758,6 +784,7 @@ export function renderEntriesList() {
       ${actionBadge}
       ${(e.revealTier || 'background') !== 'background' ? (stateBadges[narState] || '') : ''}
       ${e.fromLorebook ? '<span class="lex-badge lex-lb-badge">lorebook</span>' : ''}
+      ${resBadge}
     </div>
     <div class="lex-entry-btns">
         <button class="lexicon-icon-btn lex-edit-entry" data-id="${xss(e.id)}" data-scope="${xss(e._displayScope)}" title="Edit">
@@ -852,6 +879,31 @@ function saveEntry() {
     // Preserve existing Chekhov data if editing
     const existingChekhov = editingEntry?.chekhov || { seedCount: 0, plantedAt: null, firedAt: null, lastHintAt: null };
 
+    // v2.1: Handle resolution status
+    const newResolutionStatus = $('#lex-f-resolution').val() || 'active';
+    const resolutionReason = $('#lex-f-resolution-reason').val().trim();
+    const existingResolution = editingEntry?.resolution
+        ? JSON.parse(JSON.stringify(editingEntry.resolution))
+        : { status: 'active', evolution_log: [] };
+
+    // If status changed, log the transition
+    if (editingEntry && existingResolution.status !== newResolutionStatus) {
+        if (!Array.isArray(existingResolution.evolution_log)) {
+            existingResolution.evolution_log = [];
+        }
+        existingResolution.evolution_log.push({
+            from: existingResolution.status,
+            to: newResolutionStatus,
+            reason: resolutionReason || 'Manual change',
+            message_index: ctx?.chat?.length || null,
+            timestamp: new Date().toISOString(),
+        });
+        if (existingResolution.evolution_log.length > 20) {
+            existingResolution.evolution_log = existingResolution.evolution_log.slice(-20);
+        }
+        existingResolution.status = newResolutionStatus;
+    }
+
     const entry = {
         id: editingEntry?.id || generateEntryId(),
         title, content, category, pinned, enabled, relatedIds, scope,
@@ -861,6 +913,7 @@ function saveEntry() {
         chekhov: existingChekhov,
         narrativeState: editingEntry?.narrativeState || NARRATIVE_STATES.DORMANT,
         scene_types,
+        resolution: existingResolution,
     };
 
     // Recompute narrative state
@@ -916,6 +969,11 @@ function openEditEntry(id, scope) {
             $(`#lex-f-scene-types input[value="${st}"]`).prop('checked', true);
         }
     }
+    // v2.1: restore resolution status
+    $('#lex-f-resolution').val(entry.resolution?.status || 'active');
+    $('#lex-f-resolution-reason').val('');
+    updateResolutionDesc();
+    renderEvolutionLog(entry.resolution?.evolution_log || []);
     $('#lex-f-id-text').text(entry.id);
     $('#lex-f-id-display').show();
     $('#lex-cancel-btn').show();
@@ -957,6 +1015,10 @@ function clearForm() {
     $('#lex-f-tier').val('background');
     $('#lex-f-hint').val('');
     $('#lex-f-scene-types input').prop('checked', false);
+    $('#lex-f-resolution').val('active');
+    $('#lex-f-resolution-reason').val('');
+    $('#lex-f-evolution-log').hide();
+    $('#lex-f-evolution-entries').empty();
     $('#lex-f-id-display').hide();
     formGates = [];
     renderFormGates();
@@ -969,6 +1031,45 @@ function updateTierDesc() {
     const meta = REVEAL_TIER_META[tier];
     if (meta) {
         $('#lex-tier-desc').html(`<span style="color:${meta.color}">${meta.icon} ${meta.desc}</span>`);
+    }
+}
+
+// ─── v2.1: Resolution Helpers ────────────────────────────────────────────────
+
+function updateResolutionDesc() {
+    const status = $('#lex-f-resolution').val() || 'active';
+    const meta = RESOLUTION_META[status];
+    if (meta) {
+        $('#lex-resolution-desc').html(`<span style="color:${meta.color}">${meta.icon} ${meta.desc}</span>`);
+    }
+}
+
+function renderEvolutionLog(log) {
+    const $container = $('#lex-f-evolution-entries');
+    $container.empty();
+
+    if (!log || !log.length) {
+        $('#lex-f-evolution-log').hide();
+        return;
+    }
+
+    $('#lex-f-evolution-log').show();
+
+    // Show most recent first, cap at 10
+    const display = log.slice(-10).reverse();
+    for (const ev of display) {
+        const fromMeta = RESOLUTION_META[ev.from] || { icon: '?', label: ev.from };
+        const toMeta = RESOLUTION_META[ev.to] || { icon: '?', label: ev.to };
+        const date = ev.timestamp ? new Date(ev.timestamp).toLocaleDateString() : '?';
+        const msgInfo = ev.message_index != null ? ` (msg #${ev.message_index})` : '';
+
+        $container.append(`
+            <div class="lex-evolution-item">
+                <span class="lex-evo-transition">${fromMeta.icon} ${fromMeta.label} → ${toMeta.icon} ${toMeta.label}</span>
+                <span class="lex-evo-date">${date}${msgInfo}</span>
+                ${ev.reason ? `<div class="lex-evo-reason">${ev.reason}</div>` : ''}
+            </div>
+        `);
     }
 }
 

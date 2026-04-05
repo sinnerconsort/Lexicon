@@ -101,6 +101,22 @@ export const SCENE_TYPE_KEYWORDS = {
     ],
 };
 
+// ─── v2.1: Resolution Statuses ───────────────────────────────────────────────
+
+export const RESOLUTION_STATUSES = {
+    ACTIVE: 'active',
+    SOFTENING: 'softening',
+    RESOLVED: 'resolved',
+    DORMANT_RES: 'dormant_resolution',  // Distinct from narrative DORMANT
+};
+
+export const RESOLUTION_META = {
+    active:              { label: 'Active',    icon: '🔴', color: '#c45c5c', desc: 'Fully relevant — this trait/wound is driving behavior' },
+    softening:           { label: 'Softening', icon: '🟡', color: '#b8a460', desc: 'Being addressed — priority reduced one level' },
+    resolved:            { label: 'Resolved',  icon: '🟢', color: '#7a9e7e', desc: 'Healed or transformed — suppressed unless explicitly triggered' },
+    dormant_resolution:  { label: 'Dormant',   icon: '⚪', color: '#888',    desc: 'Temporarily inactive — could resurface' },
+};
+
 // ─── Default Entry Shape ──────────────────────────────────────────────────────
 
 export const DEFAULT_ENTRY = {
@@ -126,6 +142,11 @@ export const DEFAULT_ENTRY = {
     narrativeState: NARRATIVE_STATES.DORMANT,
     // v2.1
     scene_types: [],
+    // v2.1: Resolution & Healing
+    resolution: {
+        status: 'active',
+        evolution_log: [],     // [{ from, to, reason, message_index, timestamp }]
+    },
 };
 
 // ─── Settings Defaults ────────────────────────────────────────────────────────

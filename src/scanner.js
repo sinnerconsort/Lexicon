@@ -3,6 +3,7 @@ import { generateRaw } from '../../../../../script.js';
 import {
     getSettings, getChatState, getCharacterKey, areGatesMet,
     hasPendingBoost, isEntryCoolingDown, getEffectiveSceneType,
+    getResolutionPriorityEffect,
 } from './state.js';
 import { getLorebookEntries } from './lorebook.js';
 import {
@@ -138,6 +139,9 @@ export async function scoreEntriesWithAI(candidates, context) {
 
     // v2.1: Apply scene type boost
     results = applySceneTypeBoost(results, candidates, chatState);
+
+    // v2.1: Apply resolution status priority adjustment
+    results = applyResolutionPriority(results, candidates);
 
     // v2.1: Apply injection cooldown penalty
     results = applyInjectionCooldown(results, chatState, currentMsgIndex, settings);
@@ -351,6 +355,47 @@ function applySceneTypeBoost(scored, allCandidates, chatState) {
             };
         }
         // Non-matching scene types are NOT penalized — they just don't get the boost
+        return s;
+    });
+}
+
+// ─── v2.1: Resolution Priority ───────────────────────────────────────────────
+
+/**
+ * Adjust scoring based on entry resolution status.
+ * - active: no change
+ * - softening: halve relevance (demote one priority level)
+ * - resolved/dormant_resolution: suppress entirely
+ */
+function applyResolutionPriority(scored, allCandidates) {
+    const entryMap = new Map(allCandidates.map(e => [e.id, e]));
+
+    return scored.map(s => {
+        if (s.pinned) return s; // Pinned entries ignore resolution
+
+        const entry = entryMap.get(s.id);
+        const status = entry?.resolution?.status;
+        if (!status || status === 'active') return s;
+
+        const effect = getResolutionPriorityEffect(status);
+
+        if (effect === 'suppress') {
+            return {
+                ...s,
+                relevance: 0,
+                action: NARRATIVE_ACTIONS.SUPPRESS,
+                resolutionSuppressed: true,
+            };
+        }
+
+        if (effect === 'reduce') {
+            return {
+                ...s,
+                relevance: Math.max(0, Math.floor((s.relevance || 0) / 2)),
+                resolutionReduced: true,
+            };
+        }
+
         return s;
     });
 }

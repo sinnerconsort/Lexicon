@@ -3,6 +3,7 @@ import { chat_metadata } from '../../../../../script.js';
 import {
     EXT_ID, DEFAULT_SETTINGS, DEFAULT_CHAT_STATE, DEFAULT_ENTRY,
     NARRATIVE_STATES, REVEAL_TIERS, SCENE_TYPE_KEYWORDS,
+    RESOLUTION_STATUSES,
 } from './config.js';
 
 // ─── Core Getters ─────────────────────────────────────────────────────────────
@@ -98,6 +99,12 @@ function migrateEntries(entries) {
         if (!e.narrativeState) e.narrativeState = NARRATIVE_STATES.DORMANT;
         // v2.1 fields
         if (!Array.isArray(e.scene_types)) e.scene_types = [];
+        // v2.1: Resolution
+        if (!e.resolution || typeof e.resolution !== 'object') {
+            e.resolution = { status: 'active', evolution_log: [] };
+        }
+        if (!e.resolution.status) e.resolution.status = 'active';
+        if (!Array.isArray(e.resolution.evolution_log)) e.resolution.evolution_log = [];
     }
 }
 
@@ -318,4 +325,64 @@ export function computePendingRelatedBoosts(injectedEntries, allCandidates) {
 export function hasPendingBoost(chatState, entryId) {
     return Array.isArray(chatState?.pendingRelatedBoosts)
         && chatState.pendingRelatedBoosts.includes(entryId);
+}
+
+// ─── v2.1: Resolution & Healing ──────────────────────────────────────────────
+
+/**
+ * Change an entry's resolution status and log the transition.
+ * @param {object} entry - The entry to update
+ * @param {string} newStatus - One of: active, softening, resolved, dormant_resolution
+ * @param {string} reason - Brief explanation of why the status changed
+ * @param {number} [messageIndex] - Current message index for logging
+ * @returns {boolean} True if status actually changed
+ */
+export function setResolutionStatus(entry, newStatus, reason, messageIndex) {
+    if (!entry.resolution) {
+        entry.resolution = { status: 'active', evolution_log: [] };
+    }
+
+    const oldStatus = entry.resolution.status;
+    if (oldStatus === newStatus) return false;
+
+    // Log the transition
+    if (!Array.isArray(entry.resolution.evolution_log)) {
+        entry.resolution.evolution_log = [];
+    }
+
+    entry.resolution.evolution_log.push({
+        from: oldStatus,
+        to: newStatus,
+        reason: reason || '',
+        message_index: messageIndex ?? null,
+        timestamp: new Date().toISOString(),
+    });
+
+    // Cap evolution log at 20 entries
+    if (entry.resolution.evolution_log.length > 20) {
+        entry.resolution.evolution_log = entry.resolution.evolution_log.slice(-20);
+    }
+
+    entry.resolution.status = newStatus;
+    return true;
+}
+
+/**
+ * Get the effective injection priority modifier for a resolution status.
+ * Used by the scanner to adjust scoring.
+ * @param {string} status - Resolution status
+ * @returns {string} Priority effect: 'normal', 'reduce', 'suppress'
+ */
+export function getResolutionPriorityEffect(status) {
+    switch (status) {
+        case RESOLUTION_STATUSES.ACTIVE:
+            return 'normal';
+        case RESOLUTION_STATUSES.SOFTENING:
+            return 'reduce';    // Demote one priority level
+        case RESOLUTION_STATUSES.RESOLVED:
+        case RESOLUTION_STATUSES.DORMANT_RES:
+            return 'suppress';  // Suppress unless explicitly triggered
+        default:
+            return 'normal';
+    }
 }
