@@ -1,11 +1,17 @@
 export const EXT_ID = 'lexicon';
 export const EXT_DISPLAY_NAME = 'Lexicon';
-export const EXT_VERSION = '2.1.0';
+export const EXT_VERSION = '2.3.0';
 
 export const TRIGGER_MODES = {
     EVERY_MESSAGE: 'every_message',
     EVERY_N: 'every_n',
     MANUAL: 'manual',
+};
+
+// v2.3: When the scan runs relative to generation
+export const SCAN_TIMING = {
+    BEFORE_GENERATION: 'before_generation', // Blocks send briefly; lore reacts to your latest message
+    AFTER_AI: 'after_ai',                   // Old behavior: scan after AI reply; lore is one beat behind
 };
 
 export const ENTRY_SCOPES = {
@@ -165,6 +171,11 @@ export const DEFAULT_SETTINGS = {
     // v2.1
     enableSceneDetection: true,
     injectionCooldownThreshold: 3,
+    // v2.2: AI-judged gates
+    aiGateJudgment: true,
+    // v2.3: Scan timing
+    scanTiming: 'before_generation',
+    scanTimeoutMs: 12000,
     entries: [],
     characterEntries: {},
     settingsVersion: 3,

@@ -350,6 +350,14 @@ function createPanel() {
 
     <div class="lex-setting-group">
       <label class="lex-check">
+        <input type="checkbox" id="lex-s-gate-ai" />
+        <b>AI-judged gates</b>
+      </label>
+      <div class="lex-hint">The narrative director opens gate conditions when the story satisfies them (\ud83e\udd16 marks AI-opened gates). You can still toggle gates manually.</div>
+    </div>
+
+    <div class="lex-setting-group">
+      <label class="lex-check">
         <input type="checkbox" id="lex-s-autohint" />
         Auto-generate hints for entries without manual hint text
       </label>
@@ -381,8 +389,16 @@ function createPanel() {
     </div>
 
     <div class="lex-setting-group">
+      <div class="lex-setting-label"><b>Scan Timing</b></div>
+      <label class="lex-check"><input type="radio" name="lex-scan-timing" value="before_generation" /> Before generation</label>
+      <div class="lex-hint" style="margin-left:22px;">Lore reacts to your latest message. Adds a short wait on send (scoring call runs first, 12s max).</div>
+      <label class="lex-check"><input type="radio" name="lex-scan-timing" value="after_ai" /> After AI reply</label>
+      <div class="lex-hint" style="margin-left:22px;">No wait on send, but lore selection is one message behind.</div>
+    </div>
+
+    <div class="lex-setting-group">
       <div class="lex-setting-label"><b>Scan Trigger</b></div>
-      <label class="lex-check"><input type="radio" name="lex-trigger" value="every_message" /> Every AI response</label>
+      <label class="lex-check"><input type="radio" name="lex-trigger" value="every_message" /> Every message</label>
       <label class="lex-check"><input type="radio" name="lex-trigger" value="every_n" /> Every N messages</label>
       <div class="lex-every-n-row" id="lex-every-n-row" style="display:none;">
         <input type="number" id="lex-s-n" min="1" max="20" value="3" />
@@ -524,6 +540,11 @@ function bindAllEvents() {
         saveSettings();
     });
 
+    $('#lex-s-gate-ai').on('change', function () {
+        getSettings().aiGateJudgment = this.checked;
+        saveSettings();
+    });
+
     $('#lex-s-autohint').on('change', function () {
         getSettings().autoHintGeneration = this.checked;
         saveSettings();
@@ -552,6 +573,11 @@ function bindAllEvents() {
         getSettings().triggerMode = this.value;
         saveSettings();
         $('#lex-every-n-row').toggle(this.value === 'every_n');
+    });
+
+    $(document).on('change', 'input[name="lex-scan-timing"]', function () {
+        getSettings().scanTiming = this.value;
+        saveSettings();
     });
 
     $('#lex-s-n').on('change', function () {
@@ -760,7 +786,7 @@ export function renderEntriesList() {
             gateHtml = '<div class="lex-entry-gates">' +
                 e.gateConditions.map((g, i) =>
                     `<span class="lex-gate-toggle ${g.met ? 'lex-gate-met' : ''}" data-gate-idx="${i}" title="Click to toggle">
-                        ${g.met ? '☑' : '☐'} ${xss(g.text)}
+                        ${g.met ? '☑' : '☐'}${g.metBy === 'ai' ? '🤖' : ''} ${xss(g.text)}
                     </span>`
                 ).join('') + '</div>';
         }
@@ -825,8 +851,7 @@ function toggleGateOnEntry(entryId, gateIdx) {
     if (!entry || !entry.gateConditions?.[gateIdx]) return;
 
     entry.gateConditions[gateIdx].met = !entry.gateConditions[gateIdx].met;
-
-    // Update narrative state
+    entry.gateConditions[gateIdx].metBy = 'user'; // Manual toggle overrides AI stamp
     entry.narrativeState = computeNarrativeState(entry);
 
     saveSettings();
@@ -1160,6 +1185,7 @@ function renderSettingsTab() {
 
     $('#lex-s-enabled').prop('checked', settings.enabled);
     $('#lex-s-pacing').prop('checked', settings.enableNarrativePacing);
+    $('#lex-s-gate-ai').prop('checked', settings.aiGateJudgment !== false);
     $('#lex-s-autohint').prop('checked', settings.autoHintGeneration);
     // v2.1 settings
     $('#lex-s-scene-detect').prop('checked', settings.enableSceneDetection !== false);
@@ -1168,6 +1194,7 @@ function renderSettingsTab() {
     const chatState = getChatState();
     $('#lex-s-scene-override').val(chatState.sceneTypeOverride || '');
     $(`input[name="lex-trigger"][value="${settings.triggerMode}"]`).prop('checked', true);
+    $(`input[name="lex-scan-timing"][value="${settings.scanTiming || 'before_generation'}"]`).prop('checked', true);
     $('#lex-every-n-row').toggle(settings.triggerMode === 'every_n');
     $('#lex-s-n').val(settings.triggerEveryN);
     $('#lex-s-max').val(settings.maxInjectedEntries);

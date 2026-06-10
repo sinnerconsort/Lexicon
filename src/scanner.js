@@ -3,7 +3,7 @@ import { generateRaw } from '../../../../../script.js';
 import {
     getSettings, getChatState, getCharacterKey, areGatesMet,
     hasPendingBoost, isEntryCoolingDown, getEffectiveSceneType,
-    getResolutionPriorityEffect,
+    getResolutionPriorityEffect, computeNarrativeState,
 } from './state.js';
 import { getLorebookEntries } from './lorebook.js';
 import {
@@ -144,7 +144,7 @@ export async function scoreEntriesWithAI(candidates, context) {
     results = applyResolutionPriority(results, candidates);
 
     // v2.1: Apply injection cooldown penalty
-    results = applyInjectionCooldown(results, chatState, currentMsgIndex, settings);
+    results = applyInjectionCooldown(results, candidates, chatState, currentMsgIndex, settings);
 
     // Pinned always first
     const pinnedResults = pinned.map((e, i) => ({
@@ -239,6 +239,9 @@ TIER RULES:
 - GATED: Only INJECT if gate conditions feel met from the story. Otherwise SUPPRESS or HINT.
 - TWIST: Actively suppress unless narrative tension has built significantly (high seed count + story readiness). These are your biggest payoffs — don't waste them.
 
+GATE JUDGMENT:
+Entries may list gate conditions like [G0✗] or [G1✓]. For each UNMET gate (✗), judge whether the events of the story have now satisfied it. Be strict — a gate is met only if it clearly happened in the story, not if it merely seems close or likely soon. Report newly satisfied gates via "gates_met" as an array of gate indices (e.g. [0, 2]). Use an empty array if none. Never include already-met (✓) gates.
+
 For each entry, respond with a JSON array of objects:
 [
   {
@@ -246,6 +249,7 @@ For each entry, respond with a JSON array of objects:
     "action": "INJECT" | "HINT" | "SUPPRESS",
     "relevance": <0-10>,
     "readiness": <0-10>,
+    "gates_met": [<gate indices newly satisfied by the story, or empty>],
     "reason": "<brief 1-sentence justification>"
   }
 ]
@@ -277,7 +281,7 @@ Return ONLY the JSON array. No other text.`;
     }
 
     const validIds = new Set(narrativeEntries.map(e => e.id));
-    return parsed
+    const results = parsed
         .filter(r => validIds.has(r.id))
         .map(r => ({
             id: r.id,
@@ -285,15 +289,55 @@ Return ONLY the JSON array. No other text.`;
             readiness: clamp(r.readiness ?? 0, 0, 10),
             action: normalizeAction(r.action),
             reason: r.reason || '',
+            gates_met: Array.isArray(r.gates_met) ? r.gates_met : [],
         }));
+
+    // v2.2: Apply AI gate verdicts — flip unmet gates the story has satisfied
+    if (settings.aiGateJudgment !== false) {
+        applyGateVerdicts(results, narrativeEntries);
+    }
+
+    return results;
+}
+
+// ─── v2.2: AI Gate Judgment ───────────────────────────────────────────────────
+
+/**
+ * Write the director's gate verdicts back onto entries.
+ * Only flips false → true (the AI opens gates; only the user closes them).
+ * Mutates the live entry objects, persisted by the caller's save pass.
+ */
+function applyGateVerdicts(results, narrativeEntries) {
+    const entryMap = new Map(narrativeEntries.map(e => [e.id, e]));
+
+    for (const r of results) {
+        if (!r.gates_met?.length) continue;
+        const entry = entryMap.get(r.id);
+        if (!entry?.gateConditions?.length) continue;
+
+        let opened = false;
+        for (const rawIdx of r.gates_met) {
+            const idx = Number(rawIdx);
+            if (!Number.isInteger(idx) || idx < 0 || idx >= entry.gateConditions.length) continue;
+            const gate = entry.gateConditions[idx];
+            if (gate.met) continue; // Already met — never re-stamp
+            gate.met = true;
+            gate.metBy = 'ai';
+            gate.metAt = Date.now();
+            opened = true;
+            console.log(`[Lexicon] 🤖 Gate opened: "${gate.text}" (${entry.title || entry.id})`);
+        }
+
+        if (opened) entry.narrativeState = computeNarrativeState(entry);
+    }
 }
 
 function buildGateInfo(entry) {
     if (!entry.gateConditions?.length) return '';
     const met = entry.gateConditions.filter(g => g.met).length;
     const total = entry.gateConditions.length;
-    const conditions = entry.gateConditions.map(g =>
-        `${g.met ? '✓' : '✗'} ${g.text}`
+    const conditions = entry.gateConditions.map((g, i) =>
+        `[G${i}${g.met ? '✓' : '✗'}] ${g.text}`
     ).join('; ');
     return ` | Gates:${met}/${total} (${conditions})`;
 }
@@ -404,18 +448,29 @@ function applyResolutionPriority(scored, allCandidates) {
 
 /**
  * Deprioritize entries that have been injected too frequently recently.
- * If an entry has fired >= threshold times in the last 10 messages, halve its relevance.
+ * If an entry has fired >= threshold times in the last 10 messages:
+ * halve its relevance AND demote its action one step (INJECT→HINT→SUPPRESS),
+ * so over-used entries actually rest instead of just sorting lower.
  */
-function applyInjectionCooldown(scored, chatState, currentMsgIndex, settings) {
+function applyInjectionCooldown(scored, allCandidates, chatState, currentMsgIndex, settings) {
     const threshold = settings.injectionCooldownThreshold || 3;
+    const entryMap = new Map(allCandidates.map(e => [e.id, e]));
 
     return scored.map(s => {
         if (s.pinned) return s; // Pinned entries are immune
 
         if (isEntryCoolingDown(chatState, s.id, currentMsgIndex, threshold, 10)) {
+            // Background entries rest fully (a hint of a plain fact is just noise);
+            // narrative entries step down one level so seeds can still simmer.
+            const isBackground = (entryMap.get(s.id)?.revealTier || 'background') === 'background';
+            let demoted = s.action;
+            if (isBackground) demoted = NARRATIVE_ACTIONS.SUPPRESS;
+            else if (s.action === NARRATIVE_ACTIONS.INJECT) demoted = NARRATIVE_ACTIONS.HINT;
+            else if (s.action === NARRATIVE_ACTIONS.HINT) demoted = NARRATIVE_ACTIONS.SUPPRESS;
             return {
                 ...s,
                 relevance: Math.max(0, Math.floor((s.relevance || 0) / 2)),
+                action: demoted,
                 coolingDown: true,
             };
         }
