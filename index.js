@@ -99,11 +99,46 @@ jQuery(async () => {
             sanitizeChatState();
         }
 
-        // Wire event listeners
+        // ── Scan wiring (v2.3) ───────────────────────────────────────────
+        // before_generation: ST awaits this handler during Generate(), so the
+        // scan finishes and the injection is in place before the prompt is
+        // built — lore selection reacts to the user's just-sent message.
+        // after_ai: legacy behavior — scan after the AI replies (faster sends,
+        // but lore is always one message behind).
+
+        const GEN_EVENT = event_types.GENERATION_AFTER_COMMANDS;
+
+        if (GEN_EVENT) {
+            eventSource.on(GEN_EVENT, async (type, _options, dryRun) => {
+                const s = getSettings();
+                if (!s.enabled || s.scanTiming !== 'before_generation') return;
+                if (dryRun) return; // Prompt preview — don't burn a scan
+                // Only fresh generations: skip swipe/regenerate/continue/quiet etc.
+                // (context hasn't changed since the last scan for those)
+                if (type && type !== 'normal') return;
+                if (!shouldScan()) return;
+
+                // Never let a hung scoring call brick the send
+                const timeoutMs = s.scanTimeoutMs || 12000;
+                await Promise.race([
+                    scanAndInject(),
+                    new Promise(resolve => setTimeout(() => {
+                        console.warn(`[Lexicon] Scan timed out after ${timeoutMs}ms — generating with previous injection`);
+                        resolve();
+                    }, timeoutMs)),
+                ]);
+            });
+        }
+
         eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
-            if (getSettings().enabled && shouldScan()) {
-                await scanAndInject();
-            }
+            const s = getSettings();
+            if (!s.enabled || !shouldScan()) return;
+            // In before_generation mode this hook is redundant (and would
+            // double the AI calls per round trip) — unless the gen event
+            // isn't available on this ST version, in which case it's the
+            // only scan we have.
+            if (s.scanTiming === 'before_generation' && GEN_EVENT) return;
+            await scanAndInject();
         });
 
         eventSource.on(event_types.CHAT_CHANGED, () => {
