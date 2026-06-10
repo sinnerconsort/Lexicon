@@ -93,6 +93,7 @@ function migrateEntries(entries) {
         if (!e.revealTier) e.revealTier = REVEAL_TIERS.BACKGROUND;
         if (e.hintText === undefined) e.hintText = '';
         if (!Array.isArray(e.gateConditions)) e.gateConditions = [];
+        if (typeof e.forkGroup !== 'string') e.forkGroup = '';
         if (!e.chekhov || typeof e.chekhov !== 'object') {
             e.chekhov = { seedCount: 0, plantedAt: null, firedAt: null, lastHintAt: null };
         }
@@ -139,6 +140,41 @@ export function recordFired(entry) {
     if (!entry.chekhov) entry.chekhov = { seedCount: 0, plantedAt: null, firedAt: null, lastHintAt: null };
     entry.chekhov.firedAt = Date.now();
     entry.narrativeState = NARRATIVE_STATES.REVEALED;
+    lockForkSiblings(entry);
+}
+
+/**
+ * v2.4: When a fork-group entry fires, disable its siblings — the road
+ * not taken. Locked siblings are stamped with forkLockedBy so the panel
+ * can show why, and re-enabling one manually clears the stamp.
+ */
+export function lockForkSiblings(firedEntry) {
+    const group = (firedEntry.forkGroup || '').trim();
+    if (!group) return;
+
+    const settings = getSettings();
+    const chatState = getChatState();
+    const pools = [
+        settings.entries || [],
+        ...Object.values(settings.characterEntries || {}),
+        chatState.chatEntries || [],
+    ];
+
+    let locked = 0;
+    for (const pool of pools) {
+        if (!Array.isArray(pool)) continue;
+        for (const e of pool) {
+            if (e.id === firedEntry.id) continue;
+            if ((e.forkGroup || '').trim() !== group) continue;
+            if (e.narrativeState === NARRATIVE_STATES.REVEALED) continue;
+            e.enabled = false;
+            e.forkLockedBy = firedEntry.id;
+            locked++;
+        }
+    }
+    if (locked) {
+        console.log(`[Lexicon] Fork group "${group}": "${firedEntry.title}" fired — locked ${locked} sibling(s).`);
+    }
 }
 
 export function areGatesMet(entry) {

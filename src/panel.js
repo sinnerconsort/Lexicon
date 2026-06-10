@@ -266,6 +266,9 @@ function createPanel() {
       <label>Hint / Breadcrumb Text <span class="lex-hint">(optional — AI auto-generates if empty)</span></label>
       <textarea id="lex-f-hint" rows="2" placeholder="A vague breadcrumb the AI will weave into narration…"></textarea>
 
+      <label>Fork Group <span class="lex-hint">(optional — entries sharing a group are mutually exclusive: first to reveal locks the others)</span></label>
+      <input type="text" id="lex-f-fork" placeholder="e.g. ending" />
+
       <label>Gate Conditions <span class="lex-hint">(for Gated/Twist tiers — when should this reveal?)</span></label>
       <div id="lex-f-gates" class="lex-gate-list"></div>
       <div class="lex-gate-add-row">
@@ -810,6 +813,8 @@ export function renderEntriesList() {
       ${actionBadge}
       ${(e.revealTier || 'background') !== 'background' ? (stateBadges[narState] || '') : ''}
       ${e.fromLorebook ? '<span class="lex-badge lex-lb-badge">lorebook</span>' : ''}
+      ${e.forkGroup ? `<span class="lex-badge lex-fork-badge" title="Fork group: first sibling to reveal locks the rest">⑂ ${xss(e.forkGroup)}</span>` : ''}
+      ${e.forkLockedBy ? '<span class="lex-badge lex-forklock-badge" title="Locked: a sibling in this fork group already revealed">🔒 road not taken</span>' : ''}
       ${resBadge}
     </div>
     <div class="lex-entry-btns">
@@ -889,6 +894,7 @@ function saveEntry() {
     const relatedIds = relatedRaw ? relatedRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
     const revealTier = $('#lex-f-tier').val() || REVEAL_TIERS.BACKGROUND;
     const hintText = $('#lex-f-hint').val().trim();
+    const forkGroup = $('#lex-f-fork').val().trim();
     // v2.1: collect scene types from checkboxes
     const scene_types = [];
     $('#lex-f-scene-types input:checked').each(function() { scene_types.push($(this).val()); });
@@ -934,12 +940,18 @@ function saveEntry() {
         title, content, category, pinned, enabled, relatedIds, scope,
         revealTier,
         hintText,
+        forkGroup,
         gateConditions: [...formGates],
         chekhov: existingChekhov,
         narrativeState: editingEntry?.narrativeState || NARRATIVE_STATES.DORMANT,
         scene_types,
         resolution: existingResolution,
     };
+
+    // Fork lock: keep the stamp only while still disabled
+    if (editingEntry?.forkLockedBy && !enabled) {
+        entry.forkLockedBy = editingEntry.forkLockedBy;
+    }
 
     // Recompute narrative state
     entry.narrativeState = computeNarrativeState(entry);
@@ -987,6 +999,7 @@ function openEditEntry(id, scope) {
     $('#lex-f-related').val((entry.relatedIds || []).join(', '));
     $('#lex-f-tier').val(entry.revealTier || 'background');
     $('#lex-f-hint').val(entry.hintText || '');
+    $('#lex-f-fork').val(entry.forkGroup || '');
     // v2.1: restore scene type checkboxes
     $('#lex-f-scene-types input').prop('checked', false);
     if (Array.isArray(entry.scene_types)) {
@@ -1039,6 +1052,7 @@ function clearForm() {
     $('#lex-f-related').val('');
     $('#lex-f-tier').val('background');
     $('#lex-f-hint').val('');
+    $('#lex-f-fork').val('');
     $('#lex-f-scene-types input').prop('checked', false);
     $('#lex-f-resolution').val('active');
     $('#lex-f-resolution-reason').val('');

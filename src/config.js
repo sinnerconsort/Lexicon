@@ -1,6 +1,6 @@
 export const EXT_ID = 'lexicon';
 export const EXT_DISPLAY_NAME = 'Lexicon';
-export const EXT_VERSION = '2.3.0';
+export const EXT_VERSION = '2.4.0';
 
 export const TRIGGER_MODES = {
     EVERY_MESSAGE: 'every_message',
@@ -139,6 +139,9 @@ export const DEFAULT_ENTRY = {
     revealTier: REVEAL_TIERS.BACKGROUND,
     hintText: '',
     gateConditions: [],
+    // v2.4: mutually exclusive reveal branches — when one entry in a fork
+    // group fires REVEALED, its siblings are disabled (the road not taken).
+    forkGroup: '',
     chekhov: {
         seedCount: 0,
         plantedAt: null,
