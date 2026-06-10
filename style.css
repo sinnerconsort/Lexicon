@@ -743,3 +743,7 @@
     color: var(--SmartThemeBodyColor, #ccc); cursor: pointer;
 }
 .lex-expand-btn:hover { opacity: 1; }
+
+/* v2.4: fork groups */
+.lex-fork-badge { background: #5c7ec4; color: #fff; }
+.lex-forklock-badge { background: #555; color: #ccc; }
