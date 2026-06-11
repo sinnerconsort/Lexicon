@@ -1,5 +1,5 @@
 /**
- * Lexicon Public API v2.1
+ * Lexicon Public API v2.2 — scope-filtered lore blocks
  * Exposes a read-only interface for other extensions.
  * Access via: window.LexiconAPI (available after Lexicon init)
  */
@@ -25,6 +25,15 @@ async function getEntries(filter = {}) {
     if (filter.scope) {
         results = results.filter(e => e.scope === filter.scope);
     }
+    // v2.2: array scope filtering — whitelist and/or blacklist by source.
+    // Sources flow from the lorebook bridge: 'global' | 'character' | 'chat' | 'persona'
+    // (manual Lexicon entries carry their own scope values).
+    if (Array.isArray(filter.scopes) && filter.scopes.length) {
+        results = results.filter(e => filter.scopes.includes(e.scope));
+    }
+    if (Array.isArray(filter.excludeScopes) && filter.excludeScopes.length) {
+        results = results.filter(e => !filter.excludeScopes.includes(e.scope));
+    }
     if (filter.revealTier) {
         results = results.filter(e => (e.revealTier || 'background') === filter.revealTier);
     }
@@ -45,18 +54,25 @@ async function getEntries(filter = {}) {
     return results.map(e => ({ ...e }));
 }
 
-async function getBackgroundEntries() {
-    return getEntries({ revealTier: REVEAL_TIERS.BACKGROUND });
+async function getBackgroundEntries(filter = {}) {
+    return getEntries({ ...filter, revealTier: REVEAL_TIERS.BACKGROUND });
 }
 
-async function getHintableEntries() {
+function matchesScopeFilter(e, filter) {
+    if (Array.isArray(filter.scopes) && filter.scopes.length && !filter.scopes.includes(e.scope)) return false;
+    if (Array.isArray(filter.excludeScopes) && filter.excludeScopes.length && filter.excludeScopes.includes(e.scope)) return false;
+    return true;
+}
+
+async function getHintableEntries(filter = {}) {
     const candidates = await getAllCandidateEntries();
     return candidates
         .filter(e => {
             const tier = e.revealTier || 'background';
             return (tier === REVEAL_TIERS.FORESHADOW || tier === REVEAL_TIERS.GATED)
                 && e.enabled !== false
-                && !e.chekhov?.firedAt;
+                && !e.chekhov?.firedAt
+                && matchesScopeFilter(e, filter);
         })
         .map(e => ({
             id: e.id,
@@ -90,9 +106,19 @@ async function getNarrativeState(entryId) {
     };
 }
 
-async function getLoreContextBlock(maxEntries = 10) {
-    const bg = await getBackgroundEntries();
-    const hints = await getHintableEntries();
+/**
+ * Build a ready-to-inject lore context block.
+ * @param {number} [maxEntries=10]
+ * @param {object} [options] - { scopes: string[], excludeScopes: string[] }
+ *   e.g. Echo requesting persona-safe lore: getLoreContextBlock(6, { excludeScopes: ['chat'] })
+ */
+async function getLoreContextBlock(maxEntries = 10, options = {}) {
+    const scopeFilter = {
+        scopes: options.scopes,
+        excludeScopes: options.excludeScopes,
+    };
+    const bg = await getBackgroundEntries(scopeFilter);
+    const hints = await getHintableEntries(scopeFilter);
 
     const parts = [];
     let count = 0;
