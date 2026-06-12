@@ -163,6 +163,7 @@ export const DEFAULT_ENTRY = {
 export const DEFAULT_SETTINGS = {
     enabled: true,
     selectedProfile: 'current',
+    scanTokenBudget: 2000,
     triggerMode: TRIGGER_MODES.EVERY_MESSAGE,
     triggerEveryN: 3,
     maxInjectedEntries: 5,

@@ -427,7 +427,12 @@ function createPanel() {
       <select id="lex-s-profile">
         <option value="current">Use current connection</option>
       </select>
-      <div class="lex-hint">Tip: point this at a cheap/fast model to save costs.</div>
+      <div class="lex-hint">Tip: point this at a cheap/fast model to save costs.
+      Reasoning models (GLM thinking variants) spend tokens on hidden reasoning first —
+      prefer a non-reasoning model, or raise the budget below.</div>
+      <div class="lex-setting-label" style="margin-top:8px;"><b>Scan token budget</b></div>
+      <input type="number" id="lex-s-token-budget" min="200" max="16000" step="100" style="width:100px;">
+      <div class="lex-hint">Max tokens per scoring call. 2000 default; raise to 4000+ if responses get cut off on reasoning models.</div>
     </div>
 
     <div class="lex-setting-group">
@@ -605,6 +610,14 @@ function bindAllEvents() {
     $('#lex-s-profile').on('change', function () {
         getSettings().selectedProfile = this.value;
         saveSettings();
+    });
+
+    $('#lex-s-token-budget').on('change', function () {
+        const v = parseInt(this.value);
+        if (Number.isFinite(v) && v >= 200) {
+            getSettings().scanTokenBudget = v;
+            saveSettings();
+        }
     });
 
     $('#lex-s-lorebook').on('change', function () {
@@ -1225,6 +1238,7 @@ function renderSettingsTab() {
     const profiles = ctx?.extensionSettings?.connectionManager?.profiles || [];
     profiles.forEach(p => $prof.append(`<option value="${p.name}">${p.name}</option>`));
     $prof.val(settings.selectedProfile);
+    $('#lex-s-token-budget').val(settings.scanTokenBudget || 2000);
 }
 
 // ─── Debug Tab ────────────────────────────────────────────────────────────────

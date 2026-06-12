@@ -516,7 +516,9 @@ async function callScoringAI(prompt) {
                 const response = await ctx.ConnectionManagerRequestService.sendRequest(
                     profileId,
                     [{ role: 'user', content: prompt }],
-                    500,
+                    // Reasoning models (GLM etc.) burn budget on hidden CoT
+                    // before any visible output — 500 guaranteed truncation.
+                    getSettings().scanTokenBudget || 2000,
                     { extractData: true, includePreset: false, includeInstruct: false },
                     {}
                 );
